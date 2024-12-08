@@ -1,11 +1,13 @@
 # To do
 (Mainly posix)
-1. Fixed size buffer with functions like the video
-2. Dynamic growth with chaining
-3. Virtual memory mapping (enable both 2 and 3 dynamically too)
-4. Create a vector class that uses 3.
-5. Sub-lifetimes, growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
-    1. Free list in Red black tree
+1. Fixed size buffer with functions like the video (simple arena malloc)
+2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost)
+3. Virtual memory mapping extension (virtual mmap malloc) 
+- Scratch spaces mmaps
+- Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc)
+4. Create a vector class that uses 3 & combo (vlarray)
+5. Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
+    1. Free list in Red black tree? Or doubly linked list + RB tree
     2. Memory management depends on objects: Large size is memory page aligned, small size is inside a single page,
 medium sized has its own fixed-sized pools.
         - Scratch spaces as mmap calls. Local vs global allocators.
@@ -16,10 +18,13 @@ medium sized has its own fixed-sized pools.
     4. Bins for different size allocations, cache to keep track of the memory per bin
 // Simplified jemalloc size class computation
 size_t size_class = pow(1.25, floor(log(size) / log(1.25)));
+!!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).
+
+
 
 6. Extend arena with logging, visualization, debugging features that can be enabled.
 
-7. Make an allocator that cannot be exploited: Ensure that the allocation does not raise security flaws in memory discovery (after free), or ASLR due to the page usage. (safeFree()? Zero the data?). Address and allocation randomization, setting memory to zero without compiler optimizing with `volatile`, ensure no under or overflows in memory writing by using guard pages, etc. Look in the conversation: https://chatgpt.com/share/67559d22-ac2c-8009-ba75-75b3c3dcbb0f
+7. Make an allocator that cannot be exploited: Ensure that the allocation does not raise security flaws in memory discovery (after free), or ASLR due to the page usage. (safeFree()? Zero the data?). Address and allocation randomization, setting memory to zero without compiler optimizing with `volatile`, ensure no under or overflows in memory writing by using guard pages, etc. Look in the conversation: https://chatgpt.com/share/67559d22-ac2c-8009-ba75-75b3c3dcbb0f, https://intmainreturn0.com/notes/secure-allocators.html 
 
 inf. Convert real code
 inf+1. Adapt to also use WinAPI.
@@ -30,7 +35,7 @@ Linear vs monotonic vs multipool?
 Natural alignment (char every byte, int every 4, address divisble by size)
 Block header (only big blocks), you can get the next block from the size of the current one
 Block size +1 if alloc, +0 if not. When getting size, ignore last bits, as address has to be 
-in multiples of 8
+in multiples of 8, this is all about using a single integer for metadata, last bits are useless.
 Size 0 is end of chunk
 Header plus footer makes it possible to iterate backwards.
 - Using Red Black trees we can reduce its complexity to O(log N) while keeping 
