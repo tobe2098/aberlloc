@@ -1,5 +1,5 @@
 # To do
-(Mainly posix)
+(Mainly posix, remember all arenas should use a mutex to avoid threading problems).
 1. Fixed size buffer with functions like the video (simple arena malloc)
 2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost)
 3. Virtual memory mapping extension (virtual mmap malloc) 
@@ -61,3 +61,54 @@ ArenaClear: Resets arena to empty state
 
 
 Pagesize should be a variable of the Arena
+
+// get the # of bytes currently allocated.
+U64 ArenaGetPos(Arena *arena);
+
+// also some useful popping helpers:
+void ArenaSetPosBack(Arena *arena, U64 pos);
+
+Pagesize should be a variable of the Arena
+
+For scratch spaces:
+struct ArenaTemp
+{
+  Arena *arena;
+  U64 pos;
+};
+
+ArenaTemp ArenaTempBegin(Arena *arena); // grabs arena's position
+void ArenaTempEnd(ArenaTemp temp);      // restores arena's position
+ArenaTemp GetScratch(void); // grabs a thread-local scratch arena
+#define ReleaseScratch(t) ArenaTempEnd(t)
+Problem: grabbing the same scratch, or writing on top of the same arena you grabbed a scratch from
+So, another rule must be adopted. When GetScratch is called, it must take any arenas being used for persistent allocations, to ensure that it returns a different arena, to avoid mixing persistent allocations with scratch allocations. The API, then, becomes the following:
+
+ArenaTemp GetScratch(Arena **conflicts, U64 conflict_count); // grabs a thread-local scratch arena
+#define ReleaseScratch(t) ArenaTempEnd(t)
+If only a single “persistent” arena is present at any point in any codepath (e.g. a caller never passes in two arenas), then you will not need more than two scratch arenas. Those two scratch arenas can be used for arbitrarily-deep call stacks, because each frame in any call stack will alternate between using a single arena for persistent allocations, and the other for scratch allocations.
+“If you want a scratch arena, and an arena is already in scope for persistent allocations, then pass it into GetScratch. If you introduce an arena parameterization into an already-written codepath, then find all instances of GetScratch and update them accordingly”.
+
+For multi-threaded allocators:
+
+
+
+static size_t _getPageSize(void) {
+#ifdef _WIN32
+  SYSTEM_INFO si;
+  GetSystemInfo(&si);
+  return si.dwPageSize;
+#else
+  return sysconf(_SC_PAGESIZE);
+#endif
+}
+
+static inline size_t align_up(size_t n, size_t align) {
+  return (n + align - 1) & ~(align - 1);
+}
+#include <stdint.h>
+
+uintptr_t align_address(uintptr_t addr, size_t align) {
+    if (align == 0) return addr;
+    return addr + (align - (addr % align)) % align;
+}
