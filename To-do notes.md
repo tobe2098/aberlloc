@@ -19,7 +19,7 @@ medium sized has its own fixed-sized pools.
 // Simplified jemalloc size class computation
 size_t size_class = pow(1.25, floor(log(size) / log(1.25)));
 !!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).
-
+!!=!! For header data I think having the metadata apart, and surrounding each block with canary values is enough, or use header default aligned to 8 bits or more, then give a special function to align at a special alignment.
 
 
 6. Extend arena with logging, visualization, debugging features that can be enabled.
