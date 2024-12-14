@@ -6,6 +6,8 @@
 - Scratch spaces mmaps
 - Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc)
 4. Create a vector class that uses 3 & combo (vlarray)
+4.5. within arena scratch that leaves space for ret val, (Only in high capacity (either real or virtual))
+!!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).
 5. Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
     1. Free list in Red black tree? Or doubly linked list + RB tree
     2. Memory management depends on objects: Large size is memory page aligned, small size is inside a single page,
@@ -16,15 +18,19 @@ medium sized has its own fixed-sized pools.
         - Make sure allocations do not spill over to other pages.
     3. Memory management with thread-local pools? Manage cache-line alignment
     4. Bins for different size allocations, cache to keep track of the memory per bin
-// Simplified jemalloc size class computation
-size_t size_class = pow(1.25, floor(log(size) / log(1.25)));
-!!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).
-!!=!! For header data I think having the metadata apart, and surrounding each block with canary values is enough, or use header default aligned to 8 bits or more, then give a special function to align at a special alignment.
+
+
 
 
 6. Extend arena with logging, visualization, debugging features that can be enabled.
 
+-Pre: Cheap random number generator that is reliable in C. How much randomness do we need in address randomization?
 7. Make an allocator that cannot be exploited: Ensure that the allocation does not raise security flaws in memory discovery (after free), or ASLR due to the page usage. (safeFree()? Zero the data?). Address and allocation randomization, setting memory to zero without compiler optimizing with `volatile`, ensure no under or overflows in memory writing by using guard pages, etc. Look in the conversation: https://chatgpt.com/share/67559d22-ac2c-8009-ba75-75b3c3dcbb0f, https://intmainreturn0.com/notes/secure-allocators.html 
+!!=!! For header data I think having the metadata apart, and surrounding each block with canary values is enough, or use header default aligned to 8 bits or more, then give a special function to align at a special alignment.
+safebuffer(),
+Canary cannot be free bits because I want it to be 32 and future portable and 3-5 bits are not enough to ensure random overflow will not make it happen.
+1 random number to use as canary? Problem is, how do I do it in orecompile so it is the same everywhere?
+Safe scratch using the pages trick, 
 
 inf. Convert real code
 inf+1. Adapt to also use WinAPI.
@@ -112,3 +118,6 @@ uintptr_t align_address(uintptr_t addr, size_t align) {
     if (align == 0) return addr;
     return addr + (align - (addr % align)) % align;
 }
+
+// Simplified jemalloc size class computation
+size_t size_class = pow(1.25, floor(log(size) / log(1.25)));
