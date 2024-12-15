@@ -52,6 +52,7 @@ additional sorted Doubly Linked list is required to store allocated and
 free elements in order to be able to do coalescence operations in O(1).
 This implementation is the most common and most used in real systems 
 because it offers high flexibility while keeping performance very high.
+Essentially, the doubly-linked list is the header, and in free blocks you can make a red-black tree. The problem is dealing with coalescence.
 - 
 Funcs:
 ArenaAlloc: Creates new arena with reserved virtual memory
