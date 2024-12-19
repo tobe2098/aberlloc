@@ -93,6 +93,15 @@ int PopTo_StaticArena(StaticArena* arena, int position) { }
 int Pop_StaticArena(StaticArena* arena, int bytes) { }
 int Clear_StaticArena(StaticArena* arena) { }
 
+// Scratch space with ret value option. The idea is that the scratch space handles the deallocation, you allocate with the arena pointer
+typedef struct SA_Scratch {
+    uint8_t* __memory;      // Base pointer to reserved memory
+    size_t   __position;    // Current allocation position
+    size_t   __total_size;  // Size
+    // pthread_mutex_t __arena_mutex;
+    int __auto_align;
+} SA_Scratch;
+
 // ArenaAlloc: Creates new arena with reserved virtual memory
 // ArenaRelease: Releases all arena memory
 // ArenaSetAutoAlign: Controls automatic alignment behavior
