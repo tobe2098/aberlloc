@@ -27,16 +27,19 @@ static inline uintptr_t align_2pow(uintptr_t n, size_t align) {
   return (n + align - 1) & ~(align - 1);
 }
 
-static size_t _getPageSize(void) {
-#ifdef _WIN32
-  SYSTEM_INFO si;
-  GetSystemInfo(&si);
-  return si.dwPageSize;
-#else
-  return sysconf(_SC_PAGESIZE);
-#endif
-}
+static size_t PAGE_SIZE = 0;
 
-#define PAGE_SIZE _getPageSize()
+size_t _getPageSize(void) {
+  if (!PAGE_SIZE) {
+#ifdef _WIN32
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    PAGE_SIZE = si.dwPageSize;
+#else
+    PAGE_SIZE = sysconf(_SC_PAGESIZE);
+#endif
+  }
+  return PAGE_SIZE;
+}
 
 #endif

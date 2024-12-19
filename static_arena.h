@@ -1,18 +1,17 @@
 #ifndef _STATIC_ARENA_HEADER
 #define _STATIC_ARENA_HEADER
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include "./utils.h"
 #ifdef _WIN32
 #ifdef __GNUC__
-#include <pthread.h>
 #include <windows.h>
 // Compilation using msys2 env or similar
 #else
 #error "You need to compile with gcc."
 #endif
 #else
-#include <pthread.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
@@ -38,7 +37,7 @@ int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
   }
 #ifdef _WIN32
   // arena->__memory = (uint8_t*)VirtualAlloc(nullptr, arena_size, MEM_RESERVE, PAGE_NOACCESS);
-  arena->__memory = (uint8_t*)VirtualAlloc(nullptr, arena_size,
+  arena->__memory = (uint8_t*)VirtualAlloc(NULL, arena_size,
                                            MEM_RESERVE | MEM_COMMIT,  // Combined flags
                                            PAGE_READWRITE);
   if (!arena->__memory) {
@@ -46,7 +45,7 @@ int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
   }
 #else
   // On Unix-like systems, we use mmap with PROT_NONE
-  arena->__memory = mmap(nullptr, arena_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  arena->__memory = mmap(NULL, arena_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (ptr == MAP_FAILED) {
     return -1;
   }
