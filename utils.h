@@ -2,6 +2,7 @@
 #define _UTILS_ABERLLOC_HEADER
 #include <unistd.h>
 #include <windows.h>
+// typedef unsigned long long size_t;
 typedef int bool;
 #define TRUE                 1
 #define FALSE                0
@@ -16,14 +17,14 @@ typedef int bool;
 #define MEDIUM_SIZE_ARENA    1024 * 1024 * 256   // 256 MB
 #define LARGE_SIZE_ARENA     1024 * 1024 * 1024  // 1 GB
 
-uintptr_t align_address(uintptr_t addr, size_t align) {
+uintptr_t align_address(uintptr_t addr, uintptr_t align) {
   if (align == 0) {
     return addr;
   }
   return addr + (align - (addr % align)) % align;
 }
 
-static inline uintptr_t align_2pow(uintptr_t n, size_t align) {
+static inline uintptr_t align_2pow(uintptr_t n, uintptr_t align) {
   return (n + align - 1) & ~(align - 1);
 }
 

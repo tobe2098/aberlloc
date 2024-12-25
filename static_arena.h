@@ -18,9 +18,9 @@
 // Fixed size arena, only manages power of two alignments based on word size (if not power of 2, error)
 // Single-threaded
 typedef struct StaticArena {
-    uint8_t* __memory;      // Base pointer to reserved memory
-    size_t   __position;    // Current allocation position
-    size_t   __total_size;  // Size
+    uint8_t*  __memory;      // Base pointer to reserved memory
+    uintptr_t __position;    // Current allocation position
+    uintptr_t __total_size;  // Size
     // pthread_mutex_t __arena_mutex;
     int __auto_align;
 } StaticArena;
@@ -82,9 +82,18 @@ int SetAutoAlign2Pow_StaticArena(StaticArena* arena, int alignment) {
   // pthread_mutex_unlock(&arena->__arena_mutex);
   return 0;
 }
-int GetPos_StaticArena(StaticArena* arena) { }
 
-int PushAligner_StaticArena(StaticArena* arena, int alignemnt) { }
+uintptr_t GetPos_StaticArena(StaticArena* arena) {
+  return arena->__position;
+}
+
+int PushAligner_StaticArena(StaticArena* arena, int alignment) {
+  if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
+    // pthread_mutex_unlock(&arena->__arena_mutex);
+    return -1;
+  }
+  arena->__position = align_2pow(arena->__position, alignment);
+}
 int PushNoZero_StaticArena(StaticArena* arena, int bytes) { }
 int Push_StaticArena(StaticArena* arena, int bytes) { }
 
