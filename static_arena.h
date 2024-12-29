@@ -93,12 +93,18 @@ int PushAligner_StaticArena(StaticArena* arena, int alignment) {
     return -1;
   }
   arena->__position = align_2pow(arena->__position, alignment);
+  return 0;
 }
-int PushNoZero_StaticArena(StaticArena* arena, int bytes) { }
-int Push_StaticArena(StaticArena* arena, int bytes) { }
+uint8_t* PushNoZero_StaticArena(StaticArena* arena, int bytes) {
+  PushAligner_StaticArena(arena, arena->__auto_align);
+}
+uint8_t* Push_StaticArena(StaticArena* arena, int bytes) {
+  PushAligner_StaticArena(arena, arena->__auto_align);
+}
 
-int PopTo_StaticArena(StaticArena* arena, int position) { }
-int Pop_StaticArena(StaticArena* arena, int bytes) { }
+int Pop_StaticArena(StaticArena* arena, uintptr_t bytes) { }
+int PopTo_StaticArena(StaticArena* arena, uintptr_t position) { }
+int PopToAdress_StaticArena(StaticArena* arena, uintptr_t position) { }
 int Clear_StaticArena(StaticArena* arena) { }
 
 // Scratch space with ret value option. The idea is that the scratch space handles the deallocation, you allocate with the arena pointer
