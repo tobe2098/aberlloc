@@ -28,7 +28,7 @@ medium sized has its own fixed-sized pools.
 8. Make an allocator that cannot be exploited: Ensure that the allocation does not raise security flaws in memory discovery (after free), or ASLR due to the page usage. (safeFree()? Zero the data?). Address and allocation randomization, setting memory to zero without compiler optimizing with `volatile`, ensure no under or overflows in memory writing by using guard pages, etc. Look in the conversation: https://chatgpt.com/share/67559d22-ac2c-8009-ba75-75b3c3dcbb0f, https://intmainreturn0.com/notes/secure-allocators.html 
 !!=!! For header data I think having the metadata apart, and surrounding each block with canary values is enough, or use header default aligned to 8 bits or more, then give a special function to align at a special alignment.
 safebuffer(),
-Canary cannot be free bits because I want it to be 32 and future portable and 3-5 bits are not enough to ensure random overflow will not make it happen.
+Canary cannot be free bits because I want it to be 32 and future portable and 3-5 bits are not enough to ensure random overflow will not make it happen. Why not write canary value in buffer overflow when attacking?
 1 random number to use as canary? Problem is, how do I do it in orecompile so it is the same everywhere?
 Safe scratch using the pages trick, 
 

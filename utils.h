@@ -2,20 +2,22 @@
 #define _UTILS_ABERLLOC_HEADER
 #include <unistd.h>
 #include <windows.h>
+#include "cache.h"
 // typedef unsigned long long size_t;
 typedef int bool;
-#define TRUE                 1
-#define FALSE                0
+#define TRUE                   1
+#define FALSE                  0
 
-#define WORD_SIZE            sizeof(void*)
+#define WORD_SIZE              sizeof(void*)
+#define CROSS_THREAD_ALIGNMENT CACHE_LINE_SIZE
 
-#define SMALL_SCRATCH_SPACE  1024 * 512       // 512 kB
-#define MEDIUM_SCRATCH_SPACE 1024 * 1024 * 1  // 1 MB
-#define LARGE_SCRATCH_SPACE  1024 * 1024 * 4  // 4 MB
+#define SMALL_SCRATCH_SPACE    1024 * 512       // 512 kB
+#define MEDIUM_SCRATCH_SPACE   1024 * 1024 * 1  // 1 MB
+#define LARGE_SCRATCH_SPACE    1024 * 1024 * 4  // 4 MB
 
-#define SMALL_SIZE_ARENA     1024 * 1024 * 64    // 64 MB
-#define MEDIUM_SIZE_ARENA    1024 * 1024 * 256   // 256 MB
-#define LARGE_SIZE_ARENA     1024 * 1024 * 1024  // 1 GB
+#define SMALL_SIZE_ARENA       1024 * 1024 * 64    // 64 MB
+#define MEDIUM_SIZE_ARENA      1024 * 1024 * 256   // 256 MB
+#define LARGE_SIZE_ARENA       1024 * 1024 * 1024  // 1 GB
 
 uintptr_t align_address(uintptr_t addr, uintptr_t align) {
   if (align == 0) {
