@@ -101,7 +101,7 @@ uint8_t* PushNoZero_StaticArena(StaticArena* arena, int bytes) {
   pthread_mutex_lock(&arena->__arena_mutex);
   if (arena->__position + bytes > arena->__total_size) {
     pthread_mutex_unlock(&arena->__arena_mutex);
-    return -1;
+    return NULL;
   }
   arena->__position = align_2pow(arena->__position, arena->__auto_align);
   uint8_t* ptr      = arena->__memory + arena->__position;
@@ -113,7 +113,7 @@ uint8_t* Push_StaticArena(StaticArena* arena, int bytes) {
   pthread_mutex_lock(&arena->__arena_mutex);
   if (arena->__position + bytes > arena->__total_size) {
     pthread_mutex_unlock(&arena->__arena_mutex);
-    return -1;
+    return NULL;
   }
   arena->__position = align_2pow(arena->__position, arena->__auto_align);
   uint8_t* ptr      = arena->__memory + arena->__position;
@@ -131,13 +131,26 @@ void Pop_StaticArena(StaticArena* arena, uintptr_t bytes) {
   arena->__position -= bytes;
   pthread_mutex_unlock(&arena->__arena_mutex);
 }
-int PopTo_StaticArena(StaticArena* arena, uintptr_t position) {
+void PopTo_StaticArena(StaticArena* arena, uintptr_t position) {
   pthread_mutex_lock(&arena->__arena_mutex);
-
+  if (position < arena->__position) {
+    arena->__position = position;
+  }
   pthread_mutex_unlock(&arena->__arena_mutex);
 }
-int PopToAdress_StaticArena(StaticArena* arena, uintptr_t position) { }
-int Clear_StaticArena(StaticArena* arena) { }
+int PopToAdress_StaticArena(StaticArena* arena, uint8_t* address) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  uintptr_t final_position = address - arena->__memory;
+  if ((uintptr_t)arena->__memory < (uintptr_t)address) {
+    arena->__position = final_position;
+  }
+  pthread_mutex_unlock(&arena->__arena_mutex);
+}
+int Clear_StaticArena(StaticArena* arena) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  arena->__position = 0;
+  pthread_mutex_unlock(&arena->__arena_mutex);
+}
 
 // Scratch space with ret value option. The idea is that the scratch space handles the deallocation, you allocate with the arena pointer
 typedef struct SA_Scratch {
