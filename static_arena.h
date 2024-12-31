@@ -154,22 +154,134 @@ int Clear_StaticArena(StaticArena* arena) {
 
 // Scratch space with ret value option. The idea is that the scratch space handles the deallocation, you allocate with the arena pointer
 typedef struct SA_Scratch {
-    uint8_t* __memory;      // Base pointer to reserved memory
-    size_t   __position;    // Current allocation position
-    size_t   __total_size;  // Size
-    // pthread_mutex_t __arena_mutex;
-    int __auto_align;
+    StaticArena*    __arena;
+    uintptr_t       __position_checkpoint;
+    uint8_t*        __memory;      // Base pointer to reserved memory
+    size_t          __position;    // Current allocation position
+    size_t          __total_size;  // Size
+    pthread_mutex_t __scratch_mutex;
+    int             __auto_align;
 } SA_Scratch;
 
-// ArenaAlloc: Creates new arena with reserved virtual memory
-// ArenaRelease: Releases all arena memory
-// ArenaSetAutoAlign: Controls automatic alignment behavior
-// ArenaPos: Returns current allocation position
-// ArenaPushNoZero: Allocates uninitialized memory
-// ArenaPushAligner: Adds alignment padding
-// ArenaPush: Allocates zero-initialized memory
-// ArenaPopTo: Returns to specific position
-// ArenaPop: Removes specified amount from top
-// ArenaClear: Resets arena to empty state
+SA_Scratch* CreateScratch_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
+  pthread_mutex_lock(&(arena->__arena_mutex));
+  uintptr_t   position_checkpoint = GetPos_StaticArena(arena);
+  SA_Scratch* scratch_space       = PushNoZero_StaticArena(arena, arena_size);
+
+  if (scratch_space == NULL) {
+    pthread_mutex_unlock(&arena->__arena_mutex);
+    return NULL;
+  }
+  arena->__total_size = arena_size;
+  arena->__position   = 0;
+  int word_size       = WORD_SIZE;
+  if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
+    arena->__auto_align = auto_align;
+  } else {
+    arena->__auto_align = word_size;
+  }
+  pthread_mutex_init(&scratch_space->__scratch_mutex, NULL);
+  pthread_mutex_unlock(&arena->__arena_mutex);
+  return scratch_space;
+}
+int Destroy_StaticArena(StaticArena* arena) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+#ifdef _WIN32
+  if (VirtualFree(arena->__memory, 0, MEM_RELEASE) != 0) {
+    return -1;
+  }
+#else
+  if (munmap(arena->__memory, arena->__total_size) != 0) {
+    return -1;
+  }
+#endif
+  arena->__memory     = NULL;
+  arena->__total_size = 0;
+  arena->__position   = 0;
+  arena->__auto_align = 0;
+  pthread_mutex_unlock(&arena->__arena_mutex);
+  pthread_mutex_destroy(&arena->__arena_mutex);
+  return 0;
+}
+
+int SetAutoAlign2Pow_StaticArena(StaticArena* arena, int alignment) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
+    pthread_mutex_unlock(&arena->__arena_mutex);
+    return -1;
+  }
+  arena->__auto_align = alignment;
+  pthread_mutex_unlock(&arena->__arena_mutex);
+  return 0;
+}
+
+uintptr_t GetPos_StaticArena(StaticArena* arena) {
+  return arena->__position;
+}
+
+int PushAligner_StaticArena(StaticArena* arena, int alignment) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
+    pthread_mutex_unlock(&arena->__arena_mutex);
+    return -1;
+  }
+  arena->__position = align_2pow(arena->__position, alignment);
+  pthread_mutex_unlock(&arena->__arena_mutex);
+  return 0;
+}
+uint8_t* PushNoZero_StaticArena(StaticArena* arena, int bytes) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  if (arena->__position + bytes > arena->__total_size) {
+    pthread_mutex_unlock(&arena->__arena_mutex);
+    return NULL;
+  }
+  arena->__position = align_2pow(arena->__position, arena->__auto_align);
+  uint8_t* ptr      = arena->__memory + arena->__position;
+  arena->__position += bytes;
+  pthread_mutex_unlock(&arena->__arena_mutex);
+  return ptr;
+}
+uint8_t* Push_StaticArena(StaticArena* arena, int bytes) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  if (arena->__position + bytes > arena->__total_size) {
+    pthread_mutex_unlock(&arena->__arena_mutex);
+    return NULL;
+  }
+  arena->__position = align_2pow(arena->__position, arena->__auto_align);
+  uint8_t* ptr      = arena->__memory + arena->__position;
+  arena->__position += bytes;
+  pthread_mutex_unlock(&arena->__arena_mutex);
+  memset(ptr, 0, bytes);
+  return ptr;
+}
+
+void Pop_StaticArena(StaticArena* arena, uintptr_t bytes) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  if (arena->__position < bytes) {
+    bytes = arena->__position;
+  }
+  arena->__position -= bytes;
+  pthread_mutex_unlock(&arena->__arena_mutex);
+}
+void PopTo_StaticArena(StaticArena* arena, uintptr_t position) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  if (position < arena->__position) {
+    arena->__position = position;
+  }
+  pthread_mutex_unlock(&arena->__arena_mutex);
+}
+int PopToAdress_StaticArena(StaticArena* arena, uint8_t* address) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  uintptr_t final_position = address - arena->__memory;
+  if ((uintptr_t)(arena->__memory) < (uintptr_t)address) {
+    arena->__position = final_position;
+  }
+  pthread_mutex_unlock(&arena->__arena_mutex);
+}
+int Clear_StaticArena(StaticArena* arena) {
+  pthread_mutex_lock(&arena->__arena_mutex);
+  arena->__position = 0;
+  pthread_mutex_unlock(&arena->__arena_mutex);
+}
 
 #endif
