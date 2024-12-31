@@ -141,7 +141,7 @@ void PopTo_StaticArena(StaticArena* arena, uintptr_t position) {
 int PopToAdress_StaticArena(StaticArena* arena, uint8_t* address) {
   pthread_mutex_lock(&arena->__arena_mutex);
   uintptr_t final_position = address - arena->__memory;
-  if ((uintptr_t)arena->__memory < (uintptr_t)address) {
+  if ((uintptr_t)(arena->__memory) < (uintptr_t)address) {
     arena->__position = final_position;
   }
   pthread_mutex_unlock(&arena->__arena_mutex);
