@@ -204,7 +204,7 @@ int Clear_StaticArena(StaticArena* arena) {
 // Essentially, the scratch space is another arena of the same type rooted at the top pointer. Only works for static I guess.
 int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* arena, int arena_size, int auto_align) {
   if (scratch_space == NULL || scratch_space == NULL) {
-    return NULL;
+    return -1;
   }
   pthread_mutex_lock(&arena->__arena_mutex);
   uint8_t* mem = PushNoZero_StaticArena(arena, arena_size);
@@ -216,7 +216,7 @@ int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* arena, int 
   scratch_space->__memory = mem;
   if (scratch_space->__memory == NULL) {
     pthread_mutex_unlock(&arena->__arena_mutex);
-    return NULL;
+    return -1;
   }
   scratch_space->__total_size = arena_size;
   scratch_space->__position   = 0;
