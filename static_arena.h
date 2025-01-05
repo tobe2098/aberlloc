@@ -126,7 +126,7 @@ uint8_t* PushNoZero_StaticArena(StaticArena* arena, int bytes) {
   }
   pthread_mutex_lock(&arena->__arena_mutex);
   if (arena->__auto_align) {
-    arena->__position = align_2pow(arena->__position + (uintptr_t)arena->__memory, arena->__alignment) - (uintptr_t)arena->__memory;
+    arena->__position = align_2pow(arena->__position, arena->__alignment);
   }
   if (arena->__position + bytes > arena->__total_size) {
     pthread_mutex_unlock(&arena->__arena_mutex);
@@ -143,7 +143,7 @@ uint8_t* Push_StaticArena(StaticArena* arena, int bytes) {
   }
   pthread_mutex_lock(&arena->__arena_mutex);
   if (arena->__auto_align) {
-    arena->__position = align_2pow(arena->__position + (uintptr_t)arena->__memory, arena->__alignment) - (uintptr_t)arena->__memory;
+    arena->__position = align_2pow(arena->__position, arena->__alignment);
   }
   if (arena->__position + bytes > arena->__total_size) {
     pthread_mutex_unlock(&arena->__arena_mutex);
@@ -157,6 +157,8 @@ uint8_t* Push_StaticArena(StaticArena* arena, int bytes) {
 }
 
 int Pop_StaticArena(StaticArena* arena, uintptr_t bytes) {
+  // Be careful, if auto align is on, the aligner allocated bytes are unseen to you. You should use pop to position or address if autoalign
+  // is on.
   if (arena == NULL) {
     return -1;
   }

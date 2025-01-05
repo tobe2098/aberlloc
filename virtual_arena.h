@@ -60,7 +60,7 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
   }
 #else
   // On Unix-like systems, we use mmap with PROT_NONE
-  arena->__memory = mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  arena->__memory = (uint8_t*)mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (arena->__memory == MAP_FAILED) {
     return -1;
   }
@@ -114,6 +114,91 @@ int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, int alignment) {
   return 0;
 }
 
+int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
+#ifdef _WIN32
+  uint8_t* new_memory = (uint8_t*)VirtualAlloc(NULL, total_size,
+                                               MEM_RESERVE,  // Combined flags
+                                               PAGE_READWRITE);
+  if (!new_memory) {
+    return -1;
+  }
+#else
+  uint8_t* new_memory = (uint8_t*)mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (!new_memory) {
+    return -1;
+  }
+#endif
+  memcpy(new_memory, arena->__memory, arena->__position);
+  // We cannot tolerate failure after this, as we have two blocks of memory to manage. It has to be freed
+#ifdef _WIN32
+  VirtualFree(arena->__memory, 0, MEM_RELEASE);
+#else
+  munmap(arena->memory, arena->__total_size);
+#endif
+  arena->__memory = new_memory;
+  return 0;
+}
+
+int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
+#ifdef AUTO_REMAP
+  if (!arena || !total_commited_size) {
+    return -1;
+  }
+  if (total_commited_size > arena->__total_size) {
+    if (!ReMap_VirtualArena(arena, arena->__total_size * 4)) {
+      return -1;
+    }
+  }
+#else
+  if (!arena || !total_commited_size || total_commited_size > arena->__total_size) {
+    return -1;
+  }
+#endif
+  pthread_mutex_lock(&arena->__arena_mutex);
+#ifdef _WIN32
+  void* committed = VirtualAlloc(arena->__memory, total_commited_size, MEM_COMMIT, PAGE_READWRITE);
+  if (!committed) {
+    VirtualFree(arena->__memory, 0, MEM_RELEASE);
+    return -1;
+  }
+#else
+  // On Unix-like systems, we use mmap with PROT_NONE
+  arena->__memory = mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (arena->__memory == MAP_FAILED) {
+    return -1;
+  }
+  if (madvise(arena->__memory, total_commited_size, MADV_WILLNEED) != 0) {
+    munmap(arena->memory, arena_size);
+    return -1;
+  }
+#endif
+  arena->__commited_size = total_commited_size;
+  pthread_mutex_unlock(&arena->__arena_mutex);
+}
+int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
+  if (!arena || !total_commited_size) {
+    return -1;
+  }
+  pthread_mutex_lock(&arena->__arena_mutex);
+#ifdef _WIN32
+  void* committed = VirtualAlloc(arena->__memory, arena->__commited_size, MEM_COMMIT, PAGE_READWRITE);
+  if (!committed) {
+    VirtualFree(arena->__memory, 0, MEM_RELEASE);
+    return -1;
+  }
+#else
+  // On Unix-like systems, we use mmap with PROT_NONE
+  arena->__memory = mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (arena->__memory == MAP_FAILED) {
+    return -1;
+  }
+  if (madvise(arena->__memory, arena->__committed_size, MADV_WILLNEED) != 0) {
+    munmap(arena->memory, arena_size);
+    return -1;
+  }
+#endif
+  pthread_mutex_unlock(&arena->__arena_mutex);
+}
 uintptr_t GetPos_VirtualArena(VirtualArena* arena) {
   if (arena == NULL) {
     return NULL;
@@ -130,7 +215,8 @@ int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
     pthread_mutex_unlock(&arena->__arena_mutex);
     return -1;
   }
-  arena->__position = align_2pow(arena->__position + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
+  arena->__position = align_2pow(arena->__position, alignment);
+  // arena->__position = align_2pow(arena->__position + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   pthread_mutex_unlock(&arena->__arena_mutex);
   return 0;
 }
@@ -140,7 +226,7 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
   }
   pthread_mutex_lock(&arena->__arena_mutex);
   if (arena->__auto_align) {
-    arena->__position = align_2pow(arena->__position + (uintptr_t)arena->__memory, arena->__alignment) - (uintptr_t)arena->__memory;
+    arena->__position = align_2pow(arena->__position, arena->__alignment);
   }
   if (arena->__position + bytes > arena->__total_size) {
     pthread_mutex_unlock(&arena->__arena_mutex);
@@ -157,7 +243,7 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
   }
   pthread_mutex_lock(&arena->__arena_mutex);
   if (arena->__auto_align) {
-    arena->__position = align_2pow(arena->__position + (uintptr_t)arena->__memory, arena->__alignment) - (uintptr_t)arena->__memory;
+    arena->__position = align_2pow(arena->__position, arena->__alignment);
   }
   if (arena->__position + bytes > arena->__total_size) {
     pthread_mutex_unlock(&arena->__arena_mutex);
@@ -171,6 +257,8 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
 }
 
 int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
+  // Be careful, if auto align is on, the aligner allocated bytes are unseen to you. You should use pop to position or address if autoalign
+  // is on.
   if (arena == NULL) {
     return -1;
   }
