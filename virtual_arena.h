@@ -60,7 +60,7 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
   }
 #else
   // On Unix-like systems, we use mmap with PROT_NONE
-  arena->__memory = mmap(NULL, arena_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  arena->__memory = mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (arena->__memory == MAP_FAILED) {
     return -1;
   }
@@ -71,6 +71,7 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
 #endif
   return 0;
 }
+// Here
 int Destroy_VirtualArena(VirtualArena* arena) {
   if (arena == NULL) {
     return -1;
@@ -87,10 +88,12 @@ int Destroy_VirtualArena(VirtualArena* arena) {
     return -1;
   }
 #endif
-  arena->__memory     = NULL;
-  arena->__total_size = 0;
-  arena->__position   = 0;
-  arena->__auto_align = 0;
+  arena->__memory        = NULL;
+  arena->__total_size    = 0;
+  arena->__commited_size = 0;
+  arena->__position      = 0;
+  arena->__auto_align    = 0;
+  arena->__alignment     = 0;
   pthread_mutex_unlock(&arena->__arena_mutex);
   pthread_mutex_destroy(&arena->__arena_mutex);
   return 0;
