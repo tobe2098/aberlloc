@@ -45,4 +45,45 @@ size_t _getPageSize(void) {
   return PAGE_SIZE;
 }
 
+inline uintptr_t extendPolicy(uintptr_t size) {
+  return size * 4;
+}
+inline uintptr_t reducePolicy(uintptr_t size) {
+  return size / 2;
+}
+inline uint8_t* _os_new_virtual_mapping(size_t size) {
+  // We want to return ptr on success, NULL on failure
+#ifdef _WIN32
+  return ((uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE));
+#else
+  uint8_t* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  return (ptr != MAP_FAILED) ? ptr : NULL;
+#endif
+}
+
+inline int _os_commit(void* base_ptr, size_t size) {
+#ifdef _WIN32
+  return (VirtualAlloc(base_ptr, size, MEM_COMMIT, PAGE_READWRITE) != NULL) ? 0 : -1;
+#else
+  // On Unix-like systems, it is more of a suggestion
+  return (madvise(base_ptr, size, MADV_WILLNEED) != 0) ? 0 : -1;
+#endif
+}
+#ifndef DEBUG
+inline void _os_free(void* base_ptr, size_t size) {
+#ifdef _WIN32
+  VirtualFree(base_ptr, 0, MEM_RELEASE);
+#else
+  munmap(arena->memory, arena_size);
+#endif
+}
+#else
+inline int _os_free(void* base_ptr, size_t size) {
+#ifdef _WIN32
+  return (VirtualFree(base_ptr, 0, MEM_RELEASE) != 0);
+#else
+  return munmap(arena->memory, arena_size);
+#endif
+}
+#endif
 #endif
