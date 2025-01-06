@@ -50,11 +50,11 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
   arena->__memory = (uint8_t*)VirtualAlloc(NULL, arena_size,
                                            MEM_RESERVE,  // Combined flags
                                            PAGE_READWRITE);
-  if (!arena->__memory) {
+  if (arena->__memory == NULL) {
     return -1;
   }
   void* committed = VirtualAlloc(arena->__memory, arena->__commited_size, MEM_COMMIT, PAGE_READWRITE);
-  if (!committed) {
+  if (committed == NULL) {
     VirtualFree(arena->__memory, 0, MEM_RELEASE);
     return -1;
   }
@@ -128,6 +128,7 @@ int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
     return -1;
   }
 #endif
+  pthread_mutex_lock(&arena->__arena_mutex);
   memcpy(new_memory, arena->__memory, arena->__position);
   // We cannot tolerate failure after this, as we have two blocks of memory to manage. It has to be freed
 #ifdef _WIN32
@@ -136,49 +137,52 @@ int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
   munmap(arena->memory, arena->__total_size);
 #endif
   arena->__memory = new_memory;
+  pthread_mutex_unlock(&arena->__arena_mutex);
   return 0;
 }
 
 int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
-#ifdef AUTO_REMAP
-  if (!arena || !total_commited_size) {
+#ifdef DEBUG
+  if (!arena || !total_commited_size || total_commited_size < arena->__commited_size) {
     return -1;
   }
+#endif
+#ifdef AUTO_REMAP
   if (total_commited_size > arena->__total_size) {
-    if (!ReMap_VirtualArena(arena, arena->__total_size * 4)) {
+    if (!ReMap_VirtualArena(arena, extendPolicy(arena->__total_size))) {
       return -1;
     }
   }
 #else
-  if (!arena || !total_commited_size || total_commited_size > arena->__total_size) {
+  if (total_commited_size > arena->__total_size) {
     return -1;
   }
 #endif
   pthread_mutex_lock(&arena->__arena_mutex);
+  // We only need to extend the memory commitment under the total size.
 #ifdef _WIN32
   void* committed = VirtualAlloc(arena->__memory, total_commited_size, MEM_COMMIT, PAGE_READWRITE);
   if (!committed) {
-    VirtualFree(arena->__memory, 0, MEM_RELEASE);
+    // If the call fails, is there something to take care of?
     return -1;
   }
 #else
-  // On Unix-like systems, we use mmap with PROT_NONE
+  // On Unix-like systems, it is more of a suggestion
   arena->__memory = mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (arena->__memory == MAP_FAILED) {
     return -1;
   }
-  if (madvise(arena->__memory, total_commited_size, MADV_WILLNEED) != 0) {
-    munmap(arena->memory, arena_size);
-    return -1;
-  }
+  void* committed = madvise(arena->__memory, total_commited_size, MADV_WILLNEED);
 #endif
   arena->__commited_size = total_commited_size;
   pthread_mutex_unlock(&arena->__arena_mutex);
 }
 int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
-  if (!arena || !total_commited_size) {
+#ifdef DEBUG
+  if (!arena || !total_commited_size || total_commited_size > arena->__commited_size) {
     return -1;
   }
+#endif
   pthread_mutex_lock(&arena->__arena_mutex);
 #ifdef _WIN32
   void* committed = VirtualAlloc(arena->__memory, arena->__commited_size, MEM_COMMIT, PAGE_READWRITE);
