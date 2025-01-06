@@ -97,6 +97,7 @@ int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, int alignment) {
 
 int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
   if (total_size < arena->__committed_size) {
+    // Need to ensure there is enough space at destination of memcopy
     return -1;
   }
   uint8_t* new_memory = _os_new_virtual_mapping(total_size);

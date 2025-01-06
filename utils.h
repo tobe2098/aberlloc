@@ -8,6 +8,9 @@ typedef int bool;
 #define TRUE                   1
 #define FALSE                  0
 
+#define ERROR_OS_MEMORY        -1
+#define ERROR_INVALID_PARAMS   -2
+
 #define WORD_SIZE              sizeof(void*)
 #define CROSS_THREAD_ALIGNMENT CACHE_LINE_SIZE
 
