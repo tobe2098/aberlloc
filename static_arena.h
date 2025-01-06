@@ -111,11 +111,10 @@ int PushAligner_StaticArena(StaticArena* arena, int alignment) {
   if (arena == NULL) {
     return -1;
   }
-  pthread_mutex_lock(&arena->__arena_mutex);
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
-    pthread_mutex_unlock(&arena->__arena_mutex);
     return -1;
   }
+  pthread_mutex_lock(&arena->__arena_mutex);
   arena->__position = align_2pow(arena->__position + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   pthread_mutex_unlock(&arena->__arena_mutex);
   return 0;

@@ -5,3 +5,4 @@
 
 # Virtual arena
 - Physical pages are not contiguous, even if the OS fools you with contiguous virtual memory adress spaces.
+- Input based checks can be performed outside the lock. Internal state checks must always be performed inside the lock to avoid data racing.
