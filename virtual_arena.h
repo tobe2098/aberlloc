@@ -60,13 +60,9 @@ int Destroy_VirtualArena(VirtualArena* arena) {
   if (arena == NULL) {
     return -1;
   }
-#ifdef DEBUG
   if (_os_free(arena->__memory, arena->__total_size) == -1) {
-    return -1;
+    DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
-#else
-  _os_free(arena->__memory, arena->__total_size);
-#endif
 
   arena->__memory         = NULL;
   arena->__total_size     = 0;
@@ -100,11 +96,9 @@ int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
   }
   memcpy(new_memory, arena->__memory, arena->__position);
   // We cannot tolerate failure after this, as we have two blocks of memory to manage. It has to be freed
-#ifdef _WIN32
-  VirtualFree(arena->__memory, 0, MEM_RELEASE);
-#else
-  munmap(arena->memory, arena->__total_size);
-#endif
+  if (_os_free(arena->__memory, arena->__total_size) != 0) {
+    DEBUG_PRINT("Freeing old virtual memory did not work during destruction. Memory leaked.");
+  }
   arena->__memory = new_memory;
   return 0;
 }
@@ -125,20 +119,9 @@ int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
   }
 #endif
   // We only need to extend the memory commitment under the total size.
-#ifdef _WIN32
-  void* committed = VirtualAlloc(arena->__memory, total_commited_size, MEM_COMMIT, PAGE_READWRITE);
-  if (!committed) {
-    // If the call fails, is there something to take care of?
+  if (_os_commit(arena->__memory, total_commited_size) == -1) {
     return -1;
   }
-#else
-  // On Unix-like systems, it is more of a suggestion
-  arena->__memory = mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (arena->__memory == MAP_FAILED) {
-    return -1;
-  }
-  void* committed = madvise(arena->__memory, total_commited_size, MADV_WILLNEED);
-#endif
   arena->__committed_size = total_commited_size;
 }
 int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
@@ -147,23 +130,11 @@ int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
     return -1;
   }
 #endif
-#ifdef _WIN32
-  void* committed = VirtualAlloc(arena->__memory, arena->__committed_size, MEM_COMMIT, PAGE_READWRITE);
-  if (!committed) {
-    VirtualFree(arena->__memory, 0, MEM_RELEASE);
+
+  if (_os_commit(arena->__memory, total_commited_size) == -1) {
     return -1;
   }
-#else
-  // On Unix-like systems, we use mmap with PROT_NONE
-  arena->__memory = mmap(NULL, arena_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (arena->__memory == MAP_FAILED) {
-    return -1;
-  }
-  if (madvise(arena->__memory, arena->__committed_size, MADV_WILLNEED) != 0) {
-    munmap(arena->memory, arena_size);
-    return -1;
-  }
-#endif
+  arena->__committed_size = total_commited_size;
 }
 uintptr_t GetPos_VirtualArena(VirtualArena* arena) {
   if (arena == NULL) {
@@ -279,7 +250,7 @@ int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, in
   return 0;
 }
 int DestroyScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena) {
-  // Destructor must run under locked mutex of parent to make sure of correct behaviour.
+  // Make sure you destroy arenas in reverse order on which you created them for correctness.
   // Check for position overflow in the memory pop.
   if (parent_arena->__position < scratch_space->__total_size) {
     parent_arena->__position = scratch_space->__total_size;

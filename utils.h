@@ -22,6 +22,12 @@ typedef int bool;
 #define MEDIUM_SIZE_ARENA      1024 * 1024 * 256   // 256 MB
 #define LARGE_SIZE_ARENA       1024 * 1024 * 1024  // 1 GB
 
+#ifdef DEBUG
+#define DEBUG_PRINT(fmt, ...) fprintf(stderr, "DEBUG: %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__)
+#else
+#define DEBUG_PRINT(fmt, ...) ((void)0)
+#endif
+
 uintptr_t align_address(uintptr_t addr, uintptr_t align) {
   if (align == 0) {
     return addr;
@@ -72,21 +78,29 @@ inline int _os_commit(void* base_ptr, size_t size) {
   return (madvise(base_ptr, size, MADV_WILLNEED) != 0) ? 0 : -1;
 #endif
 }
-#ifndef DEBUG
-inline void _os_free(void* base_ptr, size_t size) {
+inline int _os_uncommit(void* base_ptr, size_t size) {
 #ifdef _WIN32
-  VirtualFree(base_ptr, 0, MEM_RELEASE);
+  return (VirtualFree(base_ptr, size, MEM_DECOMMIT) != NULL) ? 0 : -1;
 #else
-  munmap(arena->memory, arena_size);
+  // On Unix-like systems, it is more of a suggestion
+  return (madvise(base_ptr, size, MADV_DONTNEED) != 0) ? 0 : -1;
 #endif
 }
-#else
+// #ifndef DEBUG
+// inline void _os_free(void* base_ptr, size_t size) {
+// #ifdef _WIN32
+//   VirtualFree(base_ptr, 0, MEM_RELEASE);
+// #else
+//   munmap(arena->memory, arena_size);
+// #endif
+// }
+// #else
 inline int _os_free(void* base_ptr, size_t size) {
 #ifdef _WIN32
-  return (VirtualFree(base_ptr, 0, MEM_RELEASE) != 0);
+  return (VirtualFree(base_ptr, 0, MEM_RELEASE) == 0) ? 0 : -1;
 #else
-  return munmap(arena->memory, arena_size);
+  return (munmap(arena->memory, arena_size) == 0) ? 0 : -1;
 #endif
 }
-#endif
+// #endif
 #endif
