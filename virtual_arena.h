@@ -94,6 +94,12 @@ int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
   if (new_memory == NULL) {
     return -1;
   }
+  if (_os_commit(new_memory, total_size) == -1) {
+    if (_os_free(new_memory, total_size) == -1) {
+      DEBUG_PRINT("Freeing new virtual memory block did not work during destruction. Virtual memory leaked.");
+    }
+    return -1;
+  }
   memcpy(new_memory, arena->__memory, arena->__position);
   // We cannot tolerate failure after this, as we have two blocks of memory to manage. It has to be freed
   if (_os_free(arena->__memory, arena->__total_size) != 0) {
@@ -107,17 +113,13 @@ int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
   if (!arena || !total_commited_size || total_commited_size < arena->__committed_size) {
     return -1;
   }
-#ifdef AUTO_REMAP
   if (total_commited_size > arena->__total_size) {
+    DEBUG_PRINT("Not enough virtual memory in the arena, remapping.");
     if (!ReMap_VirtualArena(arena, extendPolicy(arena->__total_size))) {
+      DEBUG_PRINT("Remap failed, not enough memory.");
       return -1;
     }
   }
-#else
-  if (total_commited_size > arena->__total_size) {
-    return -1;
-  }
-#endif
   // We only need to extend the memory commitment under the total size.
   if (_os_commit(arena->__memory, total_commited_size) == -1) {
     return -1;
