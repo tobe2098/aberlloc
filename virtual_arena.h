@@ -19,13 +19,13 @@
 // Fixed size arena, only manages power of two alignments based on word size (if not power of 2, error)
 // Single-threaded
 typedef struct VirtualArena {
-    uint8_t*  __memory;    // Base pointer to reserved memory
-    uintptr_t __position;  // Current allocation position
-    uintptr_t __committed_size;
-    uintptr_t __total_size;  // Size
+    uint8_t*  memory_;    // Base pointer to reserved memory
+    uintptr_t position_;  // Current allocation position
+    uintptr_t committed_size_;
+    uintptr_t total_size_;  // Size
     // pthread_mutex_t __arena_mutex;
-    int __auto_align;
-    int __alignment;
+    int auto_align_;
+    int alignment_;
     // VirtualArena*    __parent;
 } VirtualArena;
 
@@ -33,24 +33,24 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
   if (arena == NULL) {
     return -1;
   }
-  arena->__total_size = arena_size;
-  arena->__position   = 0;
+  arena->total_size_ = arena_size;
+  arena->position_   = 0;
   // arena->__parent     = NULL;
   int word_size = WORD_SIZE;
   if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
-    arena->__auto_align = TRUE;
-    arena->__alignment  = auto_align;
+    arena->auto_align_ = TRUE;
+    arena->alignment_  = auto_align;
   } else {
-    arena->__auto_align = FALSE;
-    arena->__alignment  = word_size;
+    arena->auto_align_ = FALSE;
+    arena->alignment_  = word_size;
   }
-  arena->__committed_size = _getPageSize();
-  arena->__memory         = _os_new_virtual_mapping(arena->__total_size);
-  if (arena->__memory == NULL) {
+  arena->committed_size_ = _getPageSize();
+  arena->memory_         = os_new_virtual_mapping_(arena->total_size_);
+  if (arena->memory_ == NULL) {
     return -1;
   }
-  if (_os_commit(arena->__memory, arena->__committed_size) == -1) {
-    _os_free(arena->__memory, arena->__total_size);
+  if (os_commit_(arena->memory_, arena->committed_size_) == -1) {
+    os_free_(arena->memory_, arena->total_size_);
     return -1;
   }
   return 0;
@@ -60,16 +60,16 @@ int Destroy_VirtualArena(VirtualArena* arena) {
   if (arena == NULL) {
     return -1;
   }
-  if (_os_free(arena->__memory, arena->__total_size) == -1) {
+  if (os_free_(arena->memory_, arena->total_size_) == -1) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
 
-  arena->__memory         = NULL;
-  arena->__total_size     = 0;
-  arena->__committed_size = 0;
-  arena->__position       = 0;
-  arena->__auto_align     = 0;
-  arena->__alignment      = 0;
+  arena->memory_         = NULL;
+  arena->total_size_     = 0;
+  arena->committed_size_ = 0;
+  arena->position_       = 0;
+  arena->auto_align_     = 0;
+  arena->alignment_      = 0;
   return 0;
 }
 
@@ -80,51 +80,51 @@ int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, int alignment) {
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
     return -1;
   }
-  arena->__auto_align = TRUE;
-  arena->__alignment  = alignment;
+  arena->auto_align_ = TRUE;
+  arena->alignment_  = alignment;
   return 0;
 }
 
 int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
-  if (total_size < arena->__committed_size) {
+  if (total_size < arena->committed_size_) {
     // Need to ensure there is enough space at destination of memcopy
     return -1;
   }
-  uint8_t* new_memory = _os_new_virtual_mapping(total_size);
+  uint8_t* new_memory = os_new_virtual_mapping_(total_size);
   if (new_memory == NULL) {
     return -1;
   }
-  if (_os_commit(new_memory, total_size) == -1) {
-    if (_os_free(new_memory, total_size) == -1) {
+  if (os_commit_(new_memory, total_size) == -1) {
+    if (os_free_(new_memory, total_size) == -1) {
       DEBUG_PRINT("Freeing new virtual memory block did not work during destruction. Virtual memory leaked.");
     }
     return -1;
   }
-  memcpy(new_memory, arena->__memory, arena->__position);
+  memcpy(new_memory, arena->memory_, arena->position_);
   // We cannot tolerate failure after this, as we have two blocks of memory to manage. It has to be freed
-  if (_os_free(arena->__memory, arena->__total_size) != 0) {
+  if (os_free_(arena->memory_, arena->total_size_) != 0) {
     DEBUG_PRINT("Freeing old virtual memory did not work during destruction. Memory leaked.");
   }
-  arena->__memory = new_memory;
+  arena->memory_ = new_memory;
   return 0;
 }
 
 int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
-  if (!arena || !total_commited_size || total_commited_size < arena->__committed_size) {
+  if (!arena || !total_commited_size || total_commited_size < arena->committed_size_) {
     return -1;
   }
-  if (total_commited_size > arena->__total_size) {
+  if (total_commited_size > arena->total_size_) {
     DEBUG_PRINT("Not enough virtual memory in the arena, remapping.");
-    if (!ReMap_VirtualArena(arena, extendPolicy(arena->__total_size))) {
+    if (!ReMap_VirtualArena(arena, extendPolicy(arena->total_size_))) {
       DEBUG_PRINT("Remap failed, not enough memory.");
       return -1;
     }
   }
   // We only need to extend the memory commitment under the total size.
-  if (_os_commit(arena->__memory, total_commited_size) == -1) {
+  if (os_commit_(arena->memory_, total_commited_size) == -1) {
     return -1;
   }
-  arena->__committed_size = total_commited_size;
+  arena->committed_size_ = total_commited_size;
 }
 int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
 #ifdef DEBUG
@@ -133,16 +133,16 @@ int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
   }
 #endif
 
-  if (_os_commit(arena->__memory, total_commited_size) == -1) {
+  if (os_commit_(arena->memory_, total_commited_size) == -1) {
     return -1;
   }
-  arena->__committed_size = total_commited_size;
+  arena->committed_size_ = total_commited_size;
 }
 uintptr_t GetPos_VirtualArena(VirtualArena* arena) {
   if (arena == NULL) {
     return NULL;
   }
-  return arena->__position;
+  return arena->position_;
 }
 
 int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
@@ -152,36 +152,36 @@ int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
     return -1;
   }
-  arena->__position = align_2pow(arena->__position, alignment);
-  // arena->__position = align_2pow(arena->__position + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
+  arena->position_ = align_2pow(arena->position_, alignment);
+  // arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   return 0;
 }
 uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
   if (arena == NULL) {
     return NULL;
   }
-  if (arena->__auto_align) {
-    arena->__position = align_2pow(arena->__position, arena->__alignment);
+  if (arena->auto_align_) {
+    arena->position_ = align_2pow(arena->position_, arena->alignment_);
   }
-  if (arena->__position + bytes > arena->__total_size) {
+  if (arena->position_ + bytes > arena->total_size_) {
     return NULL;
   }
-  uint8_t* ptr = arena->__memory + arena->__position;
-  arena->__position += bytes;
+  uint8_t* ptr = arena->memory_ + arena->position_;
+  arena->position_ += bytes;
   return ptr;
 }
 uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
   if (arena == NULL) {
     return NULL;
   }
-  if (arena->__auto_align) {
-    arena->__position = align_2pow(arena->__position, arena->__alignment);
+  if (arena->auto_align_) {
+    arena->position_ = align_2pow(arena->position_, arena->alignment_);
   }
-  if (arena->__position + bytes > arena->__total_size) {
+  if (arena->position_ + bytes > arena->total_size_) {
     return NULL;
   }
-  uint8_t* ptr = arena->__memory + arena->__position;
-  arena->__position += bytes;
+  uint8_t* ptr = arena->memory_ + arena->position_;
+  arena->position_ += bytes;
   memset(ptr, 0, bytes);
   return ptr;
 }
@@ -192,18 +192,18 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
   if (arena == NULL) {
     return -1;
   }
-  if (arena->__position < bytes) {
-    bytes = arena->__position;
+  if (arena->position_ < bytes) {
+    bytes = arena->position_;
   }
-  arena->__position -= bytes;
+  arena->position_ -= bytes;
   return 0;
 }
 int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
   if (arena == NULL) {
     return -1;
   }
-  if (position < arena->__position) {
-    arena->__position = position;
+  if (position < arena->position_) {
+    arena->position_ = position;
   }
   return 0;
 }
@@ -211,9 +211,9 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
   if (arena == NULL) {
     return -1;
   }
-  uintptr_t final_position = address - arena->__memory;
-  if ((uintptr_t)(arena->__memory) < (uintptr_t)address) {
-    arena->__position = final_position;
+  uintptr_t final_position = address - arena->memory_;
+  if ((uintptr_t)(arena->memory_) < (uintptr_t)address) {
+    arena->position_ = final_position;
   }
   return 0;
 }
@@ -221,7 +221,7 @@ int Clear_VirtualArena(VirtualArena* arena) {
   if (arena == NULL) {
     return -1;
   }
-  arena->__position = 0;
+  arena->position_ = 0;
   return 0;
 }
 
@@ -235,47 +235,47 @@ int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, in
     return -1;
   }
 
-  scratch_space->__memory = mem;
-  if (scratch_space->__memory == NULL) {
+  scratch_space->memory_ = mem;
+  if (scratch_space->memory_ == NULL) {
     return -1;
   }
-  scratch_space->__total_size = arena_size;
-  scratch_space->__position   = 0;
-  int word_size               = WORD_SIZE;
+  scratch_space->total_size_ = arena_size;
+  scratch_space->position_   = 0;
+  int word_size              = WORD_SIZE;
   if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
-    scratch_space->__auto_align = TRUE;
-    scratch_space->__alignment  = auto_align;
+    scratch_space->auto_align_ = TRUE;
+    scratch_space->alignment_  = auto_align;
   } else {
-    scratch_space->__auto_align = FALSE;
-    scratch_space->__alignment  = word_size;
+    scratch_space->auto_align_ = FALSE;
+    scratch_space->alignment_  = word_size;
   }
   return 0;
 }
 int DestroyScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena) {
   // Make sure you destroy arenas in reverse order on which you created them for correctness.
   // Check for position overflow in the memory pop.
-  if (parent_arena->__position < scratch_space->__total_size) {
-    parent_arena->__position = scratch_space->__total_size;
+  if (parent_arena->position_ < scratch_space->total_size_) {
+    parent_arena->position_ = scratch_space->total_size_;
   }
   // Null properties and pop memory
-  parent_arena->__position -= scratch_space->__total_size;
-  scratch_space->__memory     = NULL;
-  scratch_space->__total_size = 0;
-  scratch_space->__position   = 0;
-  scratch_space->__auto_align = 0;
-  scratch_space->__alignment  = 0;
+  parent_arena->position_ -= scratch_space->total_size_;
+  scratch_space->memory_     = NULL;
+  scratch_space->total_size_ = 0;
+  scratch_space->position_   = 0;
+  scratch_space->auto_align_ = 0;
+  scratch_space->alignment_  = 0;
   return 0;
 }
 int MergeScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena) {
   // Merger must run under locked mutex of parent to make sure of correct behaviour.
   // Set the new position to conserve the memory from the scratch space and null properties
   // No need to do bounds check as the memory addresses must be properly ordered, and the position too.
-  parent_arena->__position    = ((uintptr_t)scratch_space->__memory - (uintptr_t)parent_arena->__memory) + scratch_space->__position;
-  scratch_space->__memory     = NULL;
-  scratch_space->__total_size = 0;
-  scratch_space->__position   = 0;
-  scratch_space->__auto_align = 0;
-  scratch_space->__alignment  = 0;
+  parent_arena->position_    = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
+  scratch_space->memory_     = NULL;
+  scratch_space->total_size_ = 0;
+  scratch_space->position_   = 0;
+  scratch_space->auto_align_ = 0;
+  scratch_space->alignment_  = 0;
   return 0;
 }
 

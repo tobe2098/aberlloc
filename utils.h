@@ -60,7 +60,7 @@ inline uintptr_t extendPolicy(uintptr_t size) {
 inline uintptr_t reducePolicy(uintptr_t size) {
   return size / 2;
 }
-inline uint8_t* _os_new_virtual_mapping(size_t size) {
+inline uint8_t* os_new_virtual_mapping_(size_t size) {
   // We want to return ptr on success, NULL on failure
 #ifdef _WIN32
   return ((uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE));
@@ -70,7 +70,7 @@ inline uint8_t* _os_new_virtual_mapping(size_t size) {
 #endif
 }
 
-inline int _os_commit(void* base_ptr, size_t size) {
+inline int os_commit_(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualAlloc(base_ptr, size, MEM_COMMIT, PAGE_READWRITE) != NULL) ? 0 : -1;
 #else
@@ -78,7 +78,7 @@ inline int _os_commit(void* base_ptr, size_t size) {
   return (madvise(base_ptr, size, MADV_WILLNEED) != 0) ? 0 : -1;
 #endif
 }
-inline int _os_uncommit(void* base_ptr, size_t size) {
+inline int os_uncommit_(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualFree(base_ptr, size, MEM_DECOMMIT) != NULL) ? 0 : -1;
 #else
@@ -95,7 +95,7 @@ inline int _os_uncommit(void* base_ptr, size_t size) {
 // #endif
 // }
 // #else
-inline int _os_free(void* base_ptr, size_t size) {
+inline int os_free_(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualFree(base_ptr, 0, MEM_RELEASE) == 0) ? 0 : -1;
 #else

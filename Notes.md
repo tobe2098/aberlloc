@@ -9,3 +9,4 @@
 - Scratch space is a static arena, as the virtual pointer ownership is of the parent.
 # General notes
 - On both arenas, the mutexing makes no sense as they are supposed to be used in a single thread.
+- Idea for safety: create a series of safe pools for small allocations (large ones are easy). A single pool can accomodate a page worth of variables or a single buffer.
