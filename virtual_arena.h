@@ -189,8 +189,11 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
   if (arena->auto_align_) {
     PushAligner_VirtualArena(arena, arena->alignment_);
   }
-  if (arena->position_ + bytes > arena->total_size_) {
-    return NULL;
+  //----//
+  if (arena->position_ + bytes > arena->committed_size_) {
+    if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == -1) {
+      return NULL;
+    }
   }
   uint8_t* ptr = arena->memory_ + arena->position_;
   arena->position_ += bytes;
@@ -205,8 +208,10 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
   if (arena->auto_align_) {
     PushAligner_VirtualArena(arena, arena->alignment_);
   }
-  if (arena->position_ + bytes > arena->total_size_) {
-    return NULL;
+  if (arena->position_ + bytes > arena->committed_size_) {
+    if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == -1) {
+      return NULL;
+    }
   }
   uint8_t* ptr = arena->memory_ + arena->position_;
   arena->position_ += bytes;
@@ -226,6 +231,11 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
     bytes = arena->position_;
   }
   arena->position_ -= bytes;
+  if (reduceCondition(arena->committed_size_, arena->position_)) {
+    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
+      DEBUG_PRINT("Reduce commit in Virtual arena failed");
+    }
+  }
   return 0;
 }
 int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
@@ -236,6 +246,11 @@ int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
 #endif
   if (position < arena->position_) {
     arena->position_ = position;
+  }
+  if (reduceCondition(arena->committed_size_, arena->position_)) {
+    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
+      DEBUG_PRINT("Reduce commit in Virtual arena failed");
+    }
   }
   return 0;
 }
@@ -249,12 +264,19 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
   if ((uintptr_t)(arena->memory_) < (uintptr_t)address) {
     arena->position_ = final_position;
   }
+  if (reduceCondition(arena->committed_size_, arena->position_)) {
+    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
+      DEBUG_PRINT("Reduce commit in Virtual arena failed");
+    }
+  }
   return 0;
 }
 int Clear_VirtualArena(VirtualArena* arena) {
+#ifdef DEBUG
   if (arena == NULL) {
     return -1;
   }
+#endif
   arena->position_ = 0;
   return 0;
 }

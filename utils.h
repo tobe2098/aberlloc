@@ -60,6 +60,9 @@ inline uintptr_t extendPolicy(uintptr_t size) {
 inline uintptr_t reducePolicy(uintptr_t size) {
   return size / 2;
 }
+inline int reduceCondition(uintptr_t used_size, uintptr_t comm_size) {
+  return comm_size / used_size >= 4;
+}
 inline uint8_t* os_new_virtual_mapping_(size_t size) {
   // We want to return ptr on success, NULL on failure
 #ifdef _WIN32
