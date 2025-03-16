@@ -30,9 +30,11 @@ typedef struct VirtualArena {
 } VirtualArena;
 
 int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
+#ifdef DEBUG
   if (arena == NULL) {
     return -1;
   }
+#endif
   arena->total_size_ = arena_size;
   arena->position_   = 0;
   // arena->__parent     = NULL;
@@ -57,9 +59,11 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
 }
 // Here
 int Destroy_VirtualArena(VirtualArena* arena) {
+#ifdef DEBUG
   if (arena == NULL) {
     return -1;
   }
+#endif
   if (os_free_(arena->memory_, arena->total_size_) == -1) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
@@ -74,22 +78,26 @@ int Destroy_VirtualArena(VirtualArena* arena) {
 }
 
 int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, int alignment) {
+#ifdef DEBUG
   if (arena == NULL) {
     return -1;
   }
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
     return -1;
   }
+#endif
   arena->auto_align_ = TRUE;
   arena->alignment_  = alignment;
   return 0;
 }
 
 int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
+#ifdef DEBUG
   if (total_size < arena->committed_size_) {
     // Need to ensure there is enough space at destination of memcopy
     return -1;
   }
+#endif
   uint8_t* new_memory = os_new_virtual_mapping_(total_size);
   if (new_memory == NULL) {
     return -1;
@@ -110,9 +118,11 @@ int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
 }
 
 int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
+#ifdef DEBUG
   if (!arena || !total_commited_size || total_commited_size < arena->committed_size_) {
     return -1;
   }
+#endif
   if (total_commited_size > arena->total_size_) {
     DEBUG_PRINT("Not enough virtual memory in the arena, remapping.");
     if (!ReMap_VirtualArena(arena, extendPolicy(arena->total_size_))) {
@@ -132,36 +142,52 @@ int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
     return -1;
   }
 #endif
-
-  if (os_commit_(arena->memory_, total_commited_size) == -1) {
+  if (os_uncommit_(arena->memory_ + total_commited_size, arena->committed_size_ - total_commited_size) == -1) {
     return -1;
   }
   arena->committed_size_ = total_commited_size;
 }
 uintptr_t GetPos_VirtualArena(VirtualArena* arena) {
+#ifdef DEBUG
   if (arena == NULL) {
     return NULL;
   }
+#endif
   return arena->position_;
 }
 
 int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
+#ifdef DEBUG
   if (arena == NULL) {
     return -1;
   }
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
     return -1;
   }
+#endif
   arena->position_ = align_2pow(arena->position_, alignment);
   // arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   return 0;
 }
+
+int PushAlignerCacheLine_VirtualArena(VirtualArena* arena) {
+#ifdef DEBUG
+  if (arena == NULL) {
+    return -1;
+  }
+#endif
+  arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, CACHE_LINE_SIZE) - (uintptr_t)arena->memory_;
+  return 0;
+}
+
 uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
+#ifdef DEBUG
   if (arena == NULL) {
     return NULL;
   }
+#endif
   if (arena->auto_align_) {
-    arena->position_ = align_2pow(arena->position_, arena->alignment_);
+    PushAligner_VirtualArena(arena, arena->alignment_);
   }
   if (arena->position_ + bytes > arena->total_size_) {
     return NULL;
@@ -171,11 +197,13 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
   return ptr;
 }
 uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
+#ifdef DEBUG
   if (arena == NULL) {
     return NULL;
   }
+#endif
   if (arena->auto_align_) {
-    arena->position_ = align_2pow(arena->position_, arena->alignment_);
+    PushAligner_VirtualArena(arena, arena->alignment_);
   }
   if (arena->position_ + bytes > arena->total_size_) {
     return NULL;
@@ -189,9 +217,11 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
 int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
   // Be careful, if auto align is on, the aligner allocated bytes are unseen to you. You should use pop to position or address if autoalign
   // is on.
+#ifdef DEBUG
   if (arena == NULL) {
     return -1;
   }
+#endif
   if (arena->position_ < bytes) {
     bytes = arena->position_;
   }
@@ -199,18 +229,22 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
   return 0;
 }
 int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
+#ifdef DEBUG
   if (arena == NULL) {
     return -1;
   }
+#endif
   if (position < arena->position_) {
     arena->position_ = position;
   }
   return 0;
 }
 int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
+#ifdef DEBUG
   if (arena == NULL) {
     return -1;
   }
+#endif
   uintptr_t final_position = address - arena->memory_;
   if ((uintptr_t)(arena->memory_) < (uintptr_t)address) {
     arena->position_ = final_position;
@@ -227,9 +261,11 @@ int Clear_VirtualArena(VirtualArena* arena) {
 
 // Essentially, the scratch space is another arena of the same type rooted at the top pointer. Only works for static I guess.
 int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, int arena_size, int auto_align) {
+#ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
     return -1;
   }
+#endif
   uint8_t* mem = PushNoZero_VirtualArena(arena, arena_size);
   if (mem == NULL) {
     return -1;
