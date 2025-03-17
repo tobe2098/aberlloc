@@ -1,7 +1,16 @@
 #ifndef _UTILS_ABERLLOC_HEADER
 #define _UTILS_ABERLLOC_HEADER
-#include <unistd.h>
+#ifdef _WIN32
+#ifdef __GNUC__
 #include <windows.h>
+// Compilation using msys2 env or similar
+#else
+#error "You need to compile with gcc."
+#endif
+#else
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 #include "cache.h"
 // typedef unsigned long long size_t;
 typedef int bool;

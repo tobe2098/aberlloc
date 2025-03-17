@@ -1,6 +1,6 @@
 #ifndef _VIRTUAL_ARENA_HEADER
 #define _VIRTUAL_ARENA_HEADER
-#include <pthread.h>
+// #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include "./static_arena.h"
@@ -55,7 +55,7 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
     os_free_(arena->memory_, arena->total_size_);
     return ERROR_OS_MEMORY;
   }
-  return 0;
+  return SUCCESS;
 }
 // Here
 int Destroy_VirtualArena(VirtualArena* arena) {
@@ -74,7 +74,7 @@ int Destroy_VirtualArena(VirtualArena* arena) {
   arena->position_       = 0;
   arena->auto_align_     = 0;
   arena->alignment_      = 0;
-  return 0;
+  return SUCCESS;
 }
 
 int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, int alignment) {
@@ -88,7 +88,7 @@ int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, int alignment) {
 #endif
   arena->auto_align_ = TRUE;
   arena->alignment_  = alignment;
-  return 0;
+  return SUCCESS;
 }
 
 int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
@@ -114,7 +114,7 @@ int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
     DEBUG_PRINT("Freeing old virtual memory did not work during destruction. Memory leaked.");
   }
   arena->memory_ = new_memory;
-  return 0;
+  return SUCCESS;
 }
 
 int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
@@ -167,7 +167,7 @@ int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
 #endif
   arena->position_ = align_2pow(arena->position_, alignment);
   // arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
-  return 0;
+  return SUCCESS;
 }
 
 int PushAlignerCacheLine_VirtualArena(VirtualArena* arena) {
@@ -177,7 +177,7 @@ int PushAlignerCacheLine_VirtualArena(VirtualArena* arena) {
   }
 #endif
   arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, CACHE_LINE_SIZE) - (uintptr_t)arena->memory_;
-  return 0;
+  return SUCCESS;
 }
 
 uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
@@ -236,7 +236,7 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
-  return 0;
+  return SUCCESS;
 }
 int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
 #ifdef DEBUG
@@ -252,7 +252,7 @@ int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
-  return 0;
+  return SUCCESS;
 }
 int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
 #ifdef DEBUG
@@ -271,7 +271,7 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
-  return 0;
+  return SUCCESS;
 }
 int Clear_VirtualArena(VirtualArena* arena) {
 #ifdef DEBUG
@@ -283,11 +283,11 @@ int Clear_VirtualArena(VirtualArena* arena) {
   if (ReduceCommit_VirtualArena(arena, _getPageSize()) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Reduce commit in Virtual arena failed");
   }
-  return 0;
+  return SUCCESS;
 }
 
 // Essentially, the scratch space is another arena of the same type rooted at the top pointer. Only works for static I guess.
-int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, int arena_size, int auto_align) {
+int InitScratch_VirtualArena(LinkedArena* scratch_space, VirtualArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
     return ERROR_INVALID_PARAMS;
@@ -310,9 +310,9 @@ int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, in
     scratch_space->auto_align_ = FALSE;
     scratch_space->alignment_  = word_size;
   }
-  return 0;
+  return SUCCESS;
 }
-int DestroyScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena) {
+int DestroyScratch_VirtualArena(LinkedArena* scratch_space, VirtualArena* parent_arena) {
   // Make sure you destroy arenas in reverse order on which you created them for correctness.
   // Check for position overflow in the memory pop.
   if (parent_arena->position_ < scratch_space->total_size_) {
@@ -325,9 +325,9 @@ int DestroyScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent
   scratch_space->position_   = 0;
   scratch_space->auto_align_ = 0;
   scratch_space->alignment_  = 0;
-  return 0;
+  return SUCCESS;
 }
-int MergeScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena) {
+int MergeScratch_VirtualArena(LinkedArena* scratch_space, VirtualArena* parent_arena) {
   // Merger must run under locked mutex of parent to make sure of correct behaviour.
   // Set the new position to conserve the memory from the scratch space and null properties
   // No need to do bounds check as the memory addresses must be properly ordered, and the position too.
@@ -337,7 +337,7 @@ int MergeScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_a
   scratch_space->position_   = 0;
   scratch_space->auto_align_ = 0;
   scratch_space->alignment_  = 0;
-  return 0;
+  return SUCCESS;
 }
 
 #endif

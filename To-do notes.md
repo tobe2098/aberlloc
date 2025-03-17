@@ -1,9 +1,9 @@
 # To do
 (Mainly posix, remember all arenas should use a mutex to avoid threading problems).
-1. Fixed size buffer with functions like the video (simple arena malloc)
+1. Fixed size buffer with functions like the video (simple arena malloc) DONE
 2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost)
-2.5 Add error flags for the -1 returns
-3. Virtual memory mapping extension (virtual mmap malloc) 
+2.5 Add error flags for the -1 returns SKIPPED
+3. Virtual memory mapping extension (virtual mmap malloc) DONE
 - Scratch spaces mmaps
 - Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc)
 4. Create a vector class that uses 3 & combo (vlarray)
