@@ -32,7 +32,7 @@ typedef struct VirtualArena {
 int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->total_size_ = arena_size;
@@ -49,11 +49,11 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
   arena->committed_size_ = _getPageSize();
   arena->memory_         = os_new_virtual_mapping_(arena->total_size_);
   if (arena->memory_ == NULL) {
-    return -1;
+    return ERROR_OS_MEMORY;
   }
-  if (os_commit_(arena->memory_, arena->committed_size_) == -1) {
+  if (os_commit_(arena->memory_, arena->committed_size_) == ERROR_OS_MEMORY) {
     os_free_(arena->memory_, arena->total_size_);
-    return -1;
+    return ERROR_OS_MEMORY;
   }
   return 0;
 }
@@ -61,10 +61,10 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
 int Destroy_VirtualArena(VirtualArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
-  if (os_free_(arena->memory_, arena->total_size_) == -1) {
+  if (os_free_(arena->memory_, arena->total_size_) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
 
@@ -80,10 +80,10 @@ int Destroy_VirtualArena(VirtualArena* arena) {
 int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, int alignment) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->auto_align_ = TRUE;
@@ -95,18 +95,18 @@ int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
 #ifdef DEBUG
   if (total_size < arena->committed_size_) {
     // Need to ensure there is enough space at destination of memcopy
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   uint8_t* new_memory = os_new_virtual_mapping_(total_size);
   if (new_memory == NULL) {
-    return -1;
+    return ERROR_OS_MEMORY;
   }
-  if (os_commit_(new_memory, total_size) == -1) {
-    if (os_free_(new_memory, total_size) == -1) {
+  if (os_commit_(new_memory, total_size) == ERROR_OS_MEMORY) {
+    if (os_free_(new_memory, total_size) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Freeing new virtual memory block did not work during destruction. Virtual memory leaked.");
     }
-    return -1;
+    return ERROR_OS_MEMORY;
   }
   memcpy(new_memory, arena->memory_, arena->position_);
   // We cannot tolerate failure after this, as we have two blocks of memory to manage. It has to be freed
@@ -120,30 +120,30 @@ int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
 int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
 #ifdef DEBUG
   if (!arena || !total_commited_size || total_commited_size < arena->committed_size_) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   if (total_commited_size > arena->total_size_) {
     DEBUG_PRINT("Not enough virtual memory in the arena, remapping.");
     if (!ReMap_VirtualArena(arena, extendPolicy(arena->total_size_))) {
       DEBUG_PRINT("Remap failed, not enough memory.");
-      return -1;
+      return ERROR_OS_MEMORY;
     }
   }
   // We only need to extend the memory commitment under the total size.
-  if (os_commit_(arena->memory_, total_commited_size) == -1) {
-    return -1;
+  if (os_commit_(arena->memory_, total_commited_size) == ERROR_OS_MEMORY) {
+    return ERROR_OS_MEMORY;
   }
   arena->committed_size_ = total_commited_size;
 }
 int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
 #ifdef DEBUG
   if (!arena || !total_commited_size || total_commited_size > arena->__commited_size) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
-  if (os_uncommit_(arena->memory_ + total_commited_size, arena->committed_size_ - total_commited_size) == -1) {
-    return -1;
+  if (os_uncommit_(arena->memory_ + total_commited_size, arena->committed_size_ - total_commited_size) == ERROR_OS_MEMORY) {
+    return ERROR_OS_MEMORY;
   }
   arena->committed_size_ = total_commited_size;
 }
@@ -159,10 +159,10 @@ uintptr_t GetPos_VirtualArena(VirtualArena* arena) {
 int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->position_ = align_2pow(arena->position_, alignment);
@@ -173,7 +173,7 @@ int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
 int PushAlignerCacheLine_VirtualArena(VirtualArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, CACHE_LINE_SIZE) - (uintptr_t)arena->memory_;
@@ -190,7 +190,7 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
     PushAligner_VirtualArena(arena, arena->alignment_);
   }
   while (arena->position_ + bytes > arena->committed_size_) {
-    if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == -1) {
+    if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
       return NULL;
     }
   }
@@ -209,7 +209,7 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
   }
 
   while (arena->position_ + bytes > arena->committed_size_) {
-    if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == -1) {
+    if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
       return NULL;
     }
   }
@@ -224,7 +224,7 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
   // is on.
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   if (arena->position_ < bytes) {
@@ -232,7 +232,7 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
   }
   arena->position_ -= bytes;
   while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
+    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -241,14 +241,14 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
 int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   if (position < arena->position_) {
     arena->position_ = position;
   }
   while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
+    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -257,7 +257,7 @@ int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
 int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   uintptr_t final_position = address - arena->memory_;
@@ -267,7 +267,7 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
     DEBUG_PRINT("Address is outside the memory in use in PopToAddress");
   }
   while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
+    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -276,11 +276,11 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
 int Clear_VirtualArena(VirtualArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->position_ = 0;
-  if (ReduceCommit_VirtualArena(arena, _getPageSize()) == -1) {
+  if (ReduceCommit_VirtualArena(arena, _getPageSize()) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Reduce commit in Virtual arena failed");
   }
   return 0;
@@ -290,18 +290,16 @@ int Clear_VirtualArena(VirtualArena* arena) {
 int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   uint8_t* mem = PushNoZero_VirtualArena(arena, arena_size);
   if (mem == NULL) {
-    return -1;
+    return ERROR_OS_MEMORY;
   }
 
   scratch_space->memory_ = mem;
-  if (scratch_space->memory_ == NULL) {
-    return -1;
-  }
+
   scratch_space->total_size_ = arena_size;
   scratch_space->position_   = 0;
   int word_size              = WORD_SIZE;

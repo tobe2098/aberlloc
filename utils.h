@@ -8,6 +8,7 @@ typedef int bool;
 #define TRUE                   1
 #define FALSE                  0
 
+#define SUCCESS                0
 #define ERROR_OS_MEMORY        -1
 #define ERROR_INVALID_PARAMS   -2
 
@@ -75,18 +76,18 @@ inline uint8_t* os_new_virtual_mapping_(size_t size) {
 
 inline int os_commit_(void* base_ptr, size_t size) {
 #ifdef _WIN32
-  return (VirtualAlloc(base_ptr, size, MEM_COMMIT, PAGE_READWRITE) != NULL) ? 0 : -1;
+  return (VirtualAlloc(base_ptr, size, MEM_COMMIT, PAGE_READWRITE) != NULL) ? SUCCESS : ERROR_OS_MEMORY;
 #else
   // On Unix-like systems, it is more of a suggestion
-  return (madvise(base_ptr, size, MADV_WILLNEED) != 0) ? 0 : -1;
+  return (madvise(base_ptr, size, MADV_WILLNEED) != 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
 inline int os_uncommit_(void* base_ptr, size_t size) {
 #ifdef _WIN32
-  return (VirtualFree(base_ptr, size, MEM_DECOMMIT) != NULL) ? 0 : -1;
+  return (VirtualFree(base_ptr, size, MEM_DECOMMIT) != NULL) ? SUCCESS : ERROR_OS_MEMORY;
 #else
   // On Unix-like systems, it is more of a suggestion
-  return (madvise(base_ptr, size, MADV_DONTNEED) != 0) ? 0 : -1;
+  return (madvise(base_ptr, size, MADV_DONTNEED) != 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
 // #ifndef DEBUG
@@ -100,9 +101,9 @@ inline int os_uncommit_(void* base_ptr, size_t size) {
 // #else
 inline int os_free_(void* base_ptr, size_t size) {
 #ifdef _WIN32
-  return (VirtualFree(base_ptr, 0, MEM_RELEASE) == 0) ? 0 : -1;
+  return (VirtualFree(base_ptr, 0, MEM_RELEASE) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #else
-  return (munmap(arena->memory, arena_size) == 0) ? 0 : -1;
+  return (munmap(arena->memory, arena_size) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
 // #endif

@@ -30,7 +30,7 @@ typedef struct StaticArena {
 int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->total_size_ = arena_size;
@@ -46,18 +46,18 @@ int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
   }
   arena->memory_ = os_new_virtual_mapping_(arena_size);
   if (arena->memory_ == NULL) {
-    return -1;
+    return ERROR_OS_MEMORY;
   }
   return 0;
 }
 int Destroy_StaticArena(StaticArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
-  if (os_free_(arena->memory_, arena->total_size_) == -1) {
-    return -1;
+  if (os_free_(arena->memory_, arena->total_size_) == ERROR_OS_MEMORY) {
+    return ERROR_OS_MEMORY;
   }
   arena->memory_     = NULL;
   arena->total_size_ = 0;
@@ -69,10 +69,10 @@ int Destroy_StaticArena(StaticArena* arena) {
 int SetAutoAlign2Pow_StaticArena(StaticArena* arena, int alignment) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->auto_align_ = TRUE;
@@ -92,10 +92,10 @@ uintptr_t GetPos_StaticArena(StaticArena* arena) {
 int PushAligner_StaticArena(StaticArena* arena, int alignment) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
   if (__builtin_popcount(alignment) != 1 || alignment < WORD_SIZE) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, alignment) - (uintptr_t)arena->memory_;
@@ -105,7 +105,7 @@ int PushAligner_StaticArena(StaticArena* arena, int alignment) {
 int PushAlignerCacheLine_StaticArena(StaticArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, CACHE_LINE_SIZE) - (uintptr_t)arena->memory_;
@@ -151,7 +151,7 @@ int Pop_StaticArena(StaticArena* arena, uintptr_t bytes) {
   // is on.
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   if (arena->position_ < bytes) {
@@ -163,7 +163,7 @@ int Pop_StaticArena(StaticArena* arena, uintptr_t bytes) {
 int PopTo_StaticArena(StaticArena* arena, uintptr_t position) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   if (position < arena->position_) {
@@ -174,7 +174,7 @@ int PopTo_StaticArena(StaticArena* arena, uintptr_t position) {
 int PopToAdress_StaticArena(StaticArena* arena, uint8_t* address) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   uintptr_t final_position = address - arena->memory_;
@@ -186,7 +186,7 @@ int PopToAdress_StaticArena(StaticArena* arena, uint8_t* address) {
 int Clear_StaticArena(StaticArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->position_ = 0;
@@ -197,18 +197,16 @@ int Clear_StaticArena(StaticArena* arena) {
 int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
-    return -1;
+    return ERROR_INVALID_PARAMS;
   }
 #endif
   uint8_t* mem = PushNoZero_StaticArena(arena, arena_size);
   if (mem == NULL) {
-    return -1;
+    return ERROR_OS_MEMORY;
   }
 
   scratch_space->memory_ = mem;
-  if (scratch_space->memory_ == NULL) {
-    return -1;
-  }
+
   scratch_space->total_size_ = arena_size;
   scratch_space->position_   = 0;
   int word_size              = WORD_SIZE;
