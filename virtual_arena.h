@@ -189,8 +189,7 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
   if (arena->auto_align_) {
     PushAligner_VirtualArena(arena, arena->alignment_);
   }
-  //----//
-  if (arena->position_ + bytes > arena->committed_size_) {
+  while (arena->position_ + bytes > arena->committed_size_) {
     if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == -1) {
       return NULL;
     }
@@ -208,7 +207,8 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
   if (arena->auto_align_) {
     PushAligner_VirtualArena(arena, arena->alignment_);
   }
-  if (arena->position_ + bytes > arena->committed_size_) {
+
+  while (arena->position_ + bytes > arena->committed_size_) {
     if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == -1) {
       return NULL;
     }
@@ -231,7 +231,7 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
     bytes = arena->position_;
   }
   arena->position_ -= bytes;
-  if (reduceCondition(arena->committed_size_, arena->position_)) {
+  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
     if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
@@ -247,7 +247,7 @@ int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
   if (position < arena->position_) {
     arena->position_ = position;
   }
-  if (reduceCondition(arena->committed_size_, arena->position_)) {
+  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
     if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
@@ -261,10 +261,12 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
   }
 #endif
   uintptr_t final_position = address - arena->memory_;
-  if ((uintptr_t)(arena->memory_) < (uintptr_t)address) {
+  if ((uintptr_t)(arena->memory_) < (uintptr_t)address || (uintptr_t)(arena->memory_) + arena->position_ > (uintptr_t)address) {
     arena->position_ = final_position;
+  } else {
+    DEBUG_PRINT("Address is outside the memory in use in PopToAddress");
   }
-  if (reduceCondition(arena->committed_size_, arena->position_)) {
+  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
     if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == -1) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
@@ -278,6 +280,9 @@ int Clear_VirtualArena(VirtualArena* arena) {
   }
 #endif
   arena->position_ = 0;
+  if (ReduceCommit_VirtualArena(arena, _getPageSize()) == -1) {
+    DEBUG_PRINT("Reduce commit in Virtual arena failed");
+  }
   return 0;
 }
 
