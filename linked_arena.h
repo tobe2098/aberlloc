@@ -36,7 +36,7 @@ int Init_ParentLinkedVArena(LinkedVArena* arena, int arena_size, int auto_align)
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->total_size_ = arena_size;
+  arena->total_size_ = align_2pow(arena_size + sizeof(LinkedVArena), _getPageSize());
   arena->position_   = 0;
   // arena->__parent     = NULL;
   int word_size = WORD_SIZE;
@@ -67,7 +67,9 @@ int Destroy_LinkedVArena(LinkedVArena* arena) {
   }
 #endif
   while (arena->next_arena_ != NULL) {
-    Destroy_LinkedVArena(arena);
+    if (Destroy_LinkedVArena(arena) == ERROR_INVALID_PARAMS) {
+      DEBUG_PRINT("Bad params in destructor loop");
+    }
   }
   if (os_free_(arena->memory_, arena->total_size_) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
@@ -97,29 +99,30 @@ int SetAutoAlign2Pow_LinkedVArena(LinkedVArena* arena, int alignment) {
   return SUCCESS;
 }
 
-int ReMap_LinkedVArena(LinkedVArena* arena, int total_size) {
+int NewBlock_LinkedVArena(LinkedVArena* arena) {
 #ifdef DEBUG
-  if (total_size < arena->committed_size_) {
+  if (arena == NULL) {
     // Need to ensure there is enough space at destination of memcopy
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  uint8_t* new_memory = os_new_virtual_mapping_(total_size);
-  if (new_memory == NULL) {
-    return ERROR_OS_MEMORY;
+  // We store the old parent arena
+  LinkedVArena temp = *arena;
+  // Reset the parent arena wiht new memblock of same size
+  int err_code = Init_ParentLinkedVArena(arena, arena->total_size_ - sizeof(LinkedVArena), arena->alignment_);
+  if (err_code == ERROR_INVALID_PARAMS) {
+    DEBUG_PRINT("Bad params in NewBlock");
+  } else if (err_code == ERROR_OS_MEMORY) {
+    DEBUG_PRINT("Could not acquire enough memory");
   }
-  if (os_commit_(new_memory, total_size) == ERROR_OS_MEMORY) {
-    if (os_free_(new_memory, total_size) == ERROR_OS_MEMORY) {
-      DEBUG_PRINT("Freeing new virtual memory block did not work during destruction. Virtual memory leaked.");
-    }
-    return ERROR_OS_MEMORY;
-  }
-  memcpy(new_memory, arena->memory_, arena->position_);
-  // We cannot tolerate failure after this, as we have two blocks of memory to manage. It has to be freed
-  if (os_free_(arena->memory_, arena->total_size_) != 0) {
-    DEBUG_PRINT("Freeing old virtual memory did not work during destruction. Memory leaked.");
-  }
-  arena->memory_ = new_memory;
+  // Allocate memory for old block tracking in new block
+  LinkedVArena* storage_old_block = (LinkedVArena*)Push_LinkedVArena(arena, sizeof(LinkedVArena));
+  // Page boundary alignment to avoid performance issues in the user side
+  PushAlignerPageSize_LinkedVArena(arena);
+  // Copy the data (including pointers) of old parent block into the allocated block
+  memcpy(storage_old_block, &temp, sizeof(LinkedVArena));
+  // Set the next pointer for destructor reasons.
+  arena->next_arena_ = storage_old_block;
   return SUCCESS;
 }
 
@@ -131,7 +134,7 @@ int ExtendCommit_LinkedVArena(LinkedVArena* arena, int total_commited_size) {
 #endif
   if (total_commited_size > arena->total_size_) {
     DEBUG_PRINT("Not enough virtual memory in the arena, remapping.");
-    if (!ReMap_LinkedVArena(arena, extendPolicy(arena->total_size_))) {
+    if (!NewBlock_LinkedVArena(arena)) {
       DEBUG_PRINT("Remap failed, not enough memory.");
       return ERROR_OS_MEMORY;
     }
@@ -289,13 +292,50 @@ int PopToAdress_LinkedVArena(LinkedVArena* arena, uint8_t* address) {
   }
   return SUCCESS;
 }
-int Clear_LinkedVArena(LinkedVArena* arena) {
+
+int PopBlock_LinkedVArena(LinkedVArena* arena) {
+#ifdef DEBUG
+  if (arena == NULL) {
+    return ERROR_INVALID_PARAMS;
+  }
+#endif
+  // We copy the current arena
+  LinkedVArena temp = *arena;
+  // We copy the old block to the parent block
+  memcpy(arena, arena->next_arena_, sizeof(LinkedVArena));
+  // Break the link with the block chain
+  temp.next_arena_ = NULL;
+  // Destroy the isolated block
+  if (Destroy_LinkedVArena(&temp) == ERROR_INVALID_PARAMS) {
+    DEBUG_PRINT("Bad parameters in destructor");
+  }
+  return SUCCESS;
+}
+
+int ClearBlock_LinkedVArena(LinkedVArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
   arena->position_ = 0;
+  if (ReduceCommit_LinkedVArena(arena, _getPageSize()) == ERROR_OS_MEMORY) {
+    DEBUG_PRINT("Reduce commit in Virtual arena failed");
+  }
+  return SUCCESS;
+}
+
+int ClearAll_LinkedVArena(LinkedVArena* arena) {
+#ifdef DEBUG
+  if (arena == NULL) {
+    return ERROR_INVALID_PARAMS;
+  }
+#endif
+  arena->position_ = 0;
+  if (Destroy_LinkedVArena(arena->next_arena_) == ERROR_INVALID_PARAMS) {
+    DEBUG_PRINT("Bad params in destructor");
+  }
+  arena->next_arena_ = NULL;
   if (ReduceCommit_LinkedVArena(arena, _getPageSize()) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Reduce commit in Virtual arena failed");
   }
