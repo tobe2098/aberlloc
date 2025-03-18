@@ -2,10 +2,10 @@
 (Mainly posix, remember all arenas should use a mutex to avoid threading problems).
 1. Fixed size buffer with functions like the video (simple arena malloc) DONE
 2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost)
-2.5 Add error flags for the -1 returns SKIPPED
+2.5 Add error flags for the -1 returns IN PROGRESS
 3. Virtual memory mapping extension (virtual mmap malloc) DONE
-- Scratch spaces mmaps
-- Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc)
+3.1 Scratch spaces mmaps (QuickScratch->StaticArena? Cannot merge)
+- Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc) (VirtualLinkedArena)
 4. Create a vector class that uses 3 & combo (vlarray)
 4.5. within arena scratch that leaves space for ret val, (Only in high capacity (either real or virtual))
 !!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).

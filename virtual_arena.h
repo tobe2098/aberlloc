@@ -31,7 +31,7 @@ typedef struct VirtualArena {
 
 int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
-  if (arena == NULL) {
+  if (arena == NULL || arena_size < _getPageSize()) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
@@ -179,7 +179,15 @@ int PushAlignerCacheLine_VirtualArena(VirtualArena* arena) {
   arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, CACHE_LINE_SIZE) - (uintptr_t)arena->memory_;
   return SUCCESS;
 }
-
+int PushAlignerPageSize_VirtualArena(VirtualArena* arena) {
+#ifdef DEBUG
+  if (arena == NULL) {
+    return ERROR_INVALID_PARAMS;
+  }
+#endif
+  arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, _getPageSize()) - (uintptr_t)arena->memory_;
+  return SUCCESS;
+}
 uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
 #ifdef DEBUG
   if (arena == NULL) {
@@ -287,7 +295,7 @@ int Clear_VirtualArena(VirtualArena* arena) {
 }
 
 // Essentially, the scratch space is another arena of the same type rooted at the top pointer. Only works for static I guess.
-int InitScratch_VirtualArena(LinkedArena* scratch_space, VirtualArena* arena, int arena_size, int auto_align) {
+int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
     return ERROR_INVALID_PARAMS;
@@ -312,7 +320,7 @@ int InitScratch_VirtualArena(LinkedArena* scratch_space, VirtualArena* arena, in
   }
   return SUCCESS;
 }
-int DestroyScratch_VirtualArena(LinkedArena* scratch_space, VirtualArena* parent_arena) {
+int DestroyScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena) {
   // Make sure you destroy arenas in reverse order on which you created them for correctness.
   // Check for position overflow in the memory pop.
   if (parent_arena->position_ < scratch_space->total_size_) {
@@ -327,7 +335,7 @@ int DestroyScratch_VirtualArena(LinkedArena* scratch_space, VirtualArena* parent
   scratch_space->alignment_  = 0;
   return SUCCESS;
 }
-int MergeScratch_VirtualArena(LinkedArena* scratch_space, VirtualArena* parent_arena) {
+int MergeScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena) {
   // Merger must run under locked mutex of parent to make sure of correct behaviour.
   // Set the new position to conserve the memory from the scratch space and null properties
   // No need to do bounds check as the memory addresses must be properly ordered, and the position too.

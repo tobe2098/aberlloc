@@ -29,7 +29,7 @@ typedef struct StaticArena {
 
 int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
-  if (arena == NULL) {
+  if (arena == NULL || arena_size < _getPageSize()) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
@@ -111,7 +111,15 @@ int PushAlignerCacheLine_StaticArena(StaticArena* arena) {
   arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, CACHE_LINE_SIZE) - (uintptr_t)arena->memory_;
   return SUCCESS;
 }
-
+int PushAlignerPageSize_StaticArena(StaticArena* arena) {
+#ifdef DEBUG
+  if (arena == NULL) {
+    return ERROR_INVALID_PARAMS;
+  }
+#endif
+  arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, _getPageSize()) - (uintptr_t)arena->memory_;
+  return SUCCESS;
+}
 uint8_t* PushNoZero_StaticArena(StaticArena* arena, int bytes) {
 #ifdef DEBUG
   if (arena == NULL) {
