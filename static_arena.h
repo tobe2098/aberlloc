@@ -44,7 +44,7 @@ int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
     arena->auto_align_ = FALSE;
     arena->alignment_  = word_size;
   }
-  arena->memory_ = os_new_virtual_mapping_(arena_size);
+  arena->memory_ = os_new_virtual_mapping_commit(arena_size);
   if (arena->memory_ == NULL) {
     return ERROR_OS_MEMORY;
   }
