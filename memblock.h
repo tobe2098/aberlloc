@@ -40,14 +40,14 @@ int Init_LargeMemBlock(LargeMemBlock* block, int block_size) {
   return SUCCESS;
 }
 // Here
-int Destroy_LargeMemBlock(LargeMemBlock* block) {
+int Destroy_LargeMemBlocks(LargeMemBlock* block) {
 #ifdef DEBUG
   if (block == NULL) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
   while (block->next_block_ != NULL) {
-    if (Destroy_LargeMemBlock(block) == ERROR_INVALID_PARAMS) {
+    if (Destroy_LargeMemBlocks(block) == ERROR_INVALID_PARAMS) {
       DEBUG_PRINT("Bad params in destructor loop");
     }
   }
