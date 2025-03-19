@@ -10,3 +10,13 @@
 # General notes
 - On both arenas, the mutexing makes no sense as they are supposed to be used in a single thread.
 - Idea for safety: create a series of safe pools for small allocations (large ones are easy). A single pool can accomodate a page worth of variables or a single buffer.
+
+
+
+# On security measures
+Look into further security measures. When using in encryption decryption the memory has to be unexploitable.
+## Paging
+If you are worried about OS swapping the memory to disk (e.g., for security reasons), use VirtualLock() to force the memory to stay in RAM.
+```
+VirtualLock(protected_region, 4096);
+```
