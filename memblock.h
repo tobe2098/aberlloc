@@ -25,8 +25,9 @@ typedef struct LargeMemBlock {
 } LargeMemBlock;
 
 LargeMemBlock* Create_LargeMemBlock(int block_size, LargeMemBlock* next_block) {
+  // Error code NULL if memory failed to allocate
 #ifdef DEBUG
-  if (block == NULL || block_size < _getPageSize()) {
+  if (block_size < _getPageSize()) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
@@ -43,7 +44,29 @@ LargeMemBlock* Create_LargeMemBlock(int block_size, LargeMemBlock* next_block) {
   os_protect_readonly(mem, block->header_size_);
   return block;
 }
-// Here
+
+LargeMemBlock* Pop_LargeMemoryBlock(LargeMemBlock* block) {
+#ifdef DEBUG
+  if (block == NULL) {
+    return ERROR_INVALID_PARAMS;
+  }
+#endif
+  LargeMemBlock* next_block  = block->next_block_;
+  uint8_t*       mem         = block;
+  uintptr_t      block_size  = block->block_size_;
+  uintptr_t      header_size = block->header_size_;
+  os_protect_readwrite(block, block->header_size_);
+  block->memory_      = NULL;
+  block->block_size_  = 0;
+  block->header_size_ = 0;
+  block->next_block_  = NULL;
+
+  if (os_free_(mem, block_size + header_size) == ERROR_OS_MEMORY) {
+    DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
+  }
+  return next_block;
+}
+
 int Destroy_LargeMemBlocks(LargeMemBlock* block) {
 #ifdef DEBUG
   if (block == NULL) {
@@ -58,10 +81,11 @@ int Destroy_LargeMemBlocks(LargeMemBlock* block) {
   uint8_t*  mem         = block;
   uintptr_t block_size  = block->block_size_;
   uintptr_t header_size = block->header_size_;
-  block->memory_        = NULL;
-  block->block_size_    = 0;
-  block->header_size_   = 0;
-  block->next_block_    = NULL;
+  os_protect_readwrite(block, header_size);
+  block->memory_      = NULL;
+  block->block_size_  = 0;
+  block->header_size_ = 0;
+  block->next_block_  = NULL;
   if (os_free_(mem, block_size + header_size) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
