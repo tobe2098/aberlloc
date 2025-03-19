@@ -19,25 +19,29 @@
 
 typedef struct LargeMemBlock {
     uint8_t*       memory_;
-    uintptr_t      total_size_;
+    uintptr_t      block_size_;
+    uintptr_t      header_size_;
     LargeMemBlock* next_block_;
 } LargeMemBlock;
 
-int Init_LargeMemBlock(LargeMemBlock* block, int block_size) {
+LargeMemBlock* Create_LargeMemBlock(int block_size, LargeMemBlock* next_block) {
 #ifdef DEBUG
   if (block == NULL || block_size < _getPageSize()) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  block->total_size_ = block_size;
-  // block->__parent     = NULL;
-  int word_size      = WORD_SIZE;
-  block->memory_     = os_new_virtual_mapping_commit(block->total_size_);
-  block->next_block_ = NULL;
-  if (block->memory_ == NULL) {
-    return ERROR_OS_MEMORY;
+  uintptr_t total_size = align_2pow(block_size + sizeof(LargeMemBlock), _getPageSize());
+  uint8_t*  mem        = os_new_virtual_mapping_commit(total_size);
+  if (mem == NULL) {
+    return NULL;
   }
-  return SUCCESS;
+  LargeMemBlock* block = (LargeMemBlock*)mem;
+  block->block_size_   = block_size;
+  block->header_size_  = total_size - block_size;
+  block->memory_       = mem + block->header_size_;
+  block->next_block_   = next_block;
+  os_protect_readonly(mem, block->header_size_);
+  return block;
 }
 // Here
 int Destroy_LargeMemBlocks(LargeMemBlock* block) {
@@ -46,18 +50,21 @@ int Destroy_LargeMemBlocks(LargeMemBlock* block) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  while (block->next_block_ != NULL) {
-    if (Destroy_LargeMemBlocks(block) == ERROR_INVALID_PARAMS) {
+  if (block->next_block_ != NULL) {
+    if (Destroy_LargeMemBlocks(block->next_block_) == ERROR_INVALID_PARAMS) {
       DEBUG_PRINT("Bad params in destructor loop");
     }
   }
-  if (os_free_(block->memory_, block->total_size_) == ERROR_OS_MEMORY) {
+  uint8_t*  mem         = block;
+  uintptr_t block_size  = block->block_size_;
+  uintptr_t header_size = block->header_size_;
+  block->memory_        = NULL;
+  block->block_size_    = 0;
+  block->header_size_   = 0;
+  block->next_block_    = NULL;
+  if (os_free_(mem, block_size + header_size) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
-
-  block->memory_     = NULL;
-  block->total_size_ = 0;
-  block->next_block_ = NULL;
   return SUCCESS;
 }
 #endif
