@@ -91,4 +91,25 @@ int Destroy_LargeMemBlocks(LargeMemBlock* block) {
   }
   return SUCCESS;
 }
+
+LargeMemBlock* Merge_LargeMemBlocks(LargeMemBlock* first, LargeMemBlock* second) {
+  if (NULL == second) {
+    // If both are NULL, return is NULL
+    return first;
+  }
+  if (NULL == first) {
+    return second;
+  }
+  // Do not use the second pointer afterwards!
+  LargeMemBlock* traversed = first;
+  while (traversed->next_block_ != NULL) {
+    traversed = traversed->next_block_;
+  }
+
+  os_protect_readwrite(traversed, traversed->header_size_);
+  traversed->next_block_ = second;
+  os_protect_readonly(traversed, traversed->header_size_);
+  return first;
+}
+
 #endif

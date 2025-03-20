@@ -124,7 +124,7 @@ int PushAlignerPageSize_StaticArena(StaticArena* arena) {
   arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, _getPageSize()) - (uintptr_t)arena->memory_;
   return SUCCESS;
 }
-uint8_t* PushBlock_StaticArena(StaticArena* arena, int bytes) {
+uint8_t* PushLargeBlock_StaticArena(StaticArena* arena, int bytes) {
   DEBUG_PRINT("Large block allocation of %d", bytes);
   LargeMemBlock* new_block = Create_LargeMemBlock(bytes, arena->blocks_);
   if (new_block == NULL) {
@@ -144,7 +144,7 @@ uint8_t* PushNoZero_StaticArena(StaticArena* arena, int bytes) {
     PushAligner_StaticArena(arena, arena->alignment_);
   }
   if (arena->position_ + bytes > arena->total_size_) {
-    return PushBlock_StaticArena(arena, bytes);
+    return PushLargeBlock_StaticArena(arena, bytes);
   }
   uint8_t* ptr = arena->memory_ + arena->position_;
   arena->position_ += bytes;
@@ -160,7 +160,7 @@ uint8_t* Push_StaticArena(StaticArena* arena, int bytes) {
     PushAligner_StaticArena(arena, arena->alignment_);
   }
   if (arena->position_ + bytes > arena->total_size_) {
-    uint8_t* mem = PushBlock_StaticArena(arena, bytes);
+    uint8_t* mem = PushLargeBlock_StaticArena(arena, bytes);
     memset(mem, 0, bytes);
     return mem;
   }
@@ -207,7 +207,7 @@ int PopToAdress_StaticArena(StaticArena* arena, uint8_t* address) {
   }
   return SUCCESS;
 }
-int PopBlock_StaticArena(StaticArena* arena) {
+int PopLargeBlock_StaticArena(StaticArena* arena) {
   arena->blocks_ = Pop_LargeMemoryBlock(arena->blocks_);
   return SUCCESS;
 }
@@ -224,13 +224,13 @@ int Clear_StaticArena(StaticArena* arena) {
 }
 
 // Essentially, the scratch space is another arena of the same type rooted at the top pointer. Only works for static I guess.
-int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* arena, int arena_size, int auto_align) {
+int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  uint8_t* mem = PushNoZero_StaticArena(arena, arena_size);
+  uint8_t* mem = PushNoZero_StaticArena(parent_arena, arena_size);
   if (mem == NULL) {
     return ERROR_OS_MEMORY;
   }
@@ -239,6 +239,7 @@ int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* arena, int 
 
   scratch_space->total_size_ = arena_size;
   scratch_space->position_   = 0;
+  scratch_space->blocks_     = NULL;
   int word_size              = WORD_SIZE;
   if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
     scratch_space->auto_align_ = TRUE;
@@ -257,7 +258,11 @@ int DestroyScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_a
   }
   // Null properties and pop memory
   parent_arena->position_ -= scratch_space->total_size_;
-  scratch_space->memory_     = NULL;
+  scratch_space->memory_ = NULL;
+
+  Destroy_LargeMemBlocks(scratch_space->blocks_);
+  scratch_space->blocks_ = NULL;
+
   scratch_space->total_size_ = 0;
   scratch_space->position_   = 0;
   scratch_space->auto_align_ = 0;
@@ -267,8 +272,12 @@ int DestroyScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_a
 int MergeScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_arena) {
   // Set the new position to conserve the memory from the scratch space and null properties
   // No need to do bounds check as the memory addresses must be properly ordered, and the position too.
-  parent_arena->position_    = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
-  scratch_space->memory_     = NULL;
+  parent_arena->position_ = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
+  scratch_space->memory_  = NULL;
+
+  parent_arena->blocks_  = Merge_LargeMemBlocks(scratch_space->blocks_, parent_arena->blocks_);
+  scratch_space->blocks_ = NULL;
+
   scratch_space->total_size_ = 0;
   scratch_space->position_   = 0;
   scratch_space->auto_align_ = 0;
