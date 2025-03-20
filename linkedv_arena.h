@@ -30,7 +30,7 @@ typedef struct LinkedVArena {
     LinkedVArena* next_arena_;
 } LinkedVArena;
 
-int Init_ParentLinkedVArena(LinkedVArena* arena, int arena_size, int auto_align) {
+int Init_LinkedVArena(LinkedVArena* arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (arena == NULL || arena_size < _getPageSize()) {
     return ERROR_INVALID_PARAMS;
@@ -109,7 +109,7 @@ int NewBlock_LinkedVArena(LinkedVArena* arena) {
   // We store the old parent arena
   LinkedVArena temp = *arena;
   // Reset the parent arena wiht new memblock of same size
-  int err_code = Init_ParentLinkedVArena(arena, arena->total_size_ - sizeof(LinkedVArena), arena->alignment_);
+  int err_code = Init_LinkedVArena(arena, arena->total_size_ - sizeof(LinkedVArena), arena->alignment_);
   if (err_code == ERROR_INVALID_PARAMS) {
     DEBUG_PRINT("Bad params in NewBlock");
   } else if (err_code == ERROR_OS_MEMORY) {
@@ -133,16 +133,22 @@ int ExtendCommit_LinkedVArena(LinkedVArena* arena, int total_commited_size) {
   }
 #endif
   if (total_commited_size > arena->total_size_) {
-    DEBUG_PRINT("Not enough virtual memory in the arena, remapping.");
-    if (!NewBlock_LinkedVArena(arena)) {
-      DEBUG_PRINT("Remap failed, not enough memory.");
+    total_commited_size = arena->total_size_;
+  }
+
+  if (total_commited_size == arena->committed_size_) {
+    DEBUG_PRINT("Not enough virtual memory in the block, creating a new one.");
+    if (NewBlock_LinkedVArena(arena) != SUCCESS) {
+      DEBUG_PRINT("Block creation failed");
+      return ERROR_OS_MEMORY;
+    }
+  } else {
+    if (os_commit_(arena->memory_, total_commited_size) == ERROR_OS_MEMORY) {
       return ERROR_OS_MEMORY;
     }
   }
   // We only need to extend the memory commitment under the total size.
-  if (os_commit_(arena->memory_, total_commited_size) == ERROR_OS_MEMORY) {
-    return ERROR_OS_MEMORY;
-  }
+
   arena->committed_size_ = total_commited_size;
 }
 int ReduceCommit_LinkedVArena(LinkedVArena* arena, int total_commited_size) {
