@@ -1,19 +1,20 @@
 # To do
 (Mainly posix, remember all arenas should use a mutex to avoid threading problems).
 1. Fixed size buffer with functions like the video (simple arena malloc) DONE
-2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost)
-2.5 Add error flags for the -1 returns IN PROGRESS
+2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost) IN PROGRESS
+2.5 Add error flags for the -1 returns DONE
 3. Virtual memory mapping extension (virtual mmap malloc) DONE
 3.1 Scratch spaces mmaps (QuickScratch->StaticArena? Cannot merge)
 - Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc) (VirtualLinkedArena)
-4. Create a vector class that uses 3 & combo (vlarray)
+4. Create a vector class that uses 3 & combo (vlarray) WITH ADDITIONAL PAGE TO HAVE HEADER, NOT PAGEALIGNED
 4.5. within arena scratch that leaves space for ret val, (Only in high capacity (either real or virtual))
 !!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).
-5. Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
+5. Essentially jemalloc (arenas for small allocations, used with at least n mem, binary search of arena? and freelist for each. radix tree for large memblock headers, decay?)-> malloc and free
+5. (DEPRECATED) Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
     1. Free list in Red black tree? Or doubly linked list + RB tree
         - Make sure allocations do not spill over to other pages.
 6. Memory management depends on objects: Large size is memory page aligned, small size is inside a single page,
-medium sized has its own fixed-sized pools.
+medium sized has its own fixed-sized pools. (EXTENSION OF 5)
         - Finding best fit for memory slices.
         - Coalescing memory using backwards and forwards headers every free.
         - Make sure allocations do not spill over to other pages.
