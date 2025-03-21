@@ -31,7 +31,7 @@ LargeMemBlock* Create_LargeMemBlock(int block_size, LargeMemBlock* next_block) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  uintptr_t total_size = align_2pow(block_size + sizeof(LargeMemBlock), _getPageSize());
+  uintptr_t total_size = align_2pow(align_2pow(block_size, _getPageSize()) + sizeof(LargeMemBlock), _getPageSize());
   uint8_t*  mem        = os_new_virtual_mapping_commit(total_size);
   if (mem == NULL) {
     return NULL;

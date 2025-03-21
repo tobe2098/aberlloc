@@ -3,6 +3,7 @@
 // #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include "./memblock.h"
 #include "./static_arena.h"
 #include "./utils.h"
 #ifdef _WIN32
@@ -27,7 +28,8 @@ typedef struct LinkedVArena {
     int auto_align_;
     int alignment_;
 
-    LinkedVArena* next_arena_;
+    LinkedVArena*  next_arena_;
+    LargeMemBlock* blocks_;
 } LinkedVArena;
 
 int Init_LinkedVArena(LinkedVArena* arena, int arena_size, int auto_align) {
