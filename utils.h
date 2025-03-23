@@ -2,6 +2,8 @@
 #define _UTILS_ABERLLOC_HEADER
 #ifdef _WIN32
 #ifdef __GNUC__
+
+static DWORD prot;
 #include <windows.h>
 // Compilation using msys2 env or similar
 #else
@@ -83,20 +85,55 @@ inline uint8_t* os_new_virtual_mapping_(size_t size) {
 #endif
 }
 
+inline uint8_t* os_new_virtual_mapping_commit(size_t size) {
+  // We want to return ptr on success, NULL on failure
+#ifdef _WIN32
+  return ((uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+#else
+  uint8_t* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  return (ptr != MAP_FAILED) ? ptr : NULL;
+#endif
+}
+
 inline int os_commit_(void* base_ptr, size_t size) {
 #ifdef _WIN32
-  return (VirtualAlloc(base_ptr, size, MEM_COMMIT, PAGE_READWRITE) != NULL) ? SUCCESS : ERROR_OS_MEMORY;
+  return (VirtualAlloc(base_ptr, size, MEM_COMMIT, PAGE_READWRITE) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
   // On Unix-like systems, it is more of a suggestion
-  return (madvise(base_ptr, size, MADV_WILLNEED) != 0) ? SUCCESS : ERROR_OS_MEMORY;
+  return (madvise(base_ptr, size, MADV_WILLNEED) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
 inline int os_uncommit_(void* base_ptr, size_t size) {
 #ifdef _WIN32
-  return (VirtualFree(base_ptr, size, MEM_DECOMMIT) != NULL) ? SUCCESS : ERROR_OS_MEMORY;
+  return (VirtualFree(base_ptr, size, MEM_DECOMMIT) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
   // On Unix-like systems, it is more of a suggestion
-  return (madvise(base_ptr, size, MADV_DONTNEED) != 0) ? SUCCESS : ERROR_OS_MEMORY;
+  return (madvise(base_ptr, size, MADV_DONTNEED) == 0) ? SUCCESS : ERROR_OS_MEMORY;
+#endif
+}
+
+inline int os_protect_readonly(void* base_ptr, size_t size) {
+#ifdef _WIN32
+  return (VirtualProtect(base_ptr, size, PAGE_READONLY, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
+#else
+  // On Unix-like systems, it is more of a suggestion
+  return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
+#endif
+}
+inline int os_protect_readwrite(void* base_ptr, size_t size) {
+#ifdef _WIN32
+  return (VirtualProtect(base_ptr, size, PAGE_READWRITE, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
+#else
+  // On Unix-like systems, it is more of a suggestion
+  return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
+#endif
+}
+inline int os_protect_none(void* base_ptr, size_t size) {
+#ifdef _WIN32
+  return (VirtualProtect(base_ptr, size, PAGE_NOACCESS, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
+#else
+  // On Unix-like systems, it is more of a suggestion
+  return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
 // #ifndef DEBUG

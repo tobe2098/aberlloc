@@ -3,6 +3,7 @@
 // #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include "./memblock.h"
 #include "./utils.h"
 #ifdef _WIN32
 #ifdef __GNUC__
@@ -25,6 +26,7 @@ typedef struct StaticArena {
     int auto_align_;
     int alignment_;
     // StaticArena*    __parent;
+    LargeMemBlock* blocks_;
 } StaticArena;
 
 int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
@@ -35,6 +37,7 @@ int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
 #endif
   arena->total_size_ = arena_size;
   arena->position_   = 0;
+  arena->blocks_     = NULL;
   // arena->__parent     = NULL;
   int word_size = WORD_SIZE;
   if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
@@ -44,7 +47,7 @@ int Init_StaticArena(StaticArena* arena, int arena_size, int auto_align) {
     arena->auto_align_ = FALSE;
     arena->alignment_  = word_size;
   }
-  arena->memory_ = os_new_virtual_mapping_(arena_size);
+  arena->memory_ = os_new_virtual_mapping_commit(arena_size);
   if (arena->memory_ == NULL) {
     return ERROR_OS_MEMORY;
   }
@@ -56,6 +59,7 @@ int Destroy_StaticArena(StaticArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
+  Destroy_LargeMemBlocks(arena->blocks_);
   if (os_free_(arena->memory_, arena->total_size_) == ERROR_OS_MEMORY) {
     return ERROR_OS_MEMORY;
   }
@@ -80,7 +84,7 @@ int SetAutoAlign2Pow_StaticArena(StaticArena* arena, int alignment) {
   return SUCCESS;
 }
 
-uintptr_t GetPos_StaticArena(StaticArena* arena) {
+inline uintptr_t GetPos_StaticArena(StaticArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
     return NULL;
@@ -120,6 +124,16 @@ int PushAlignerPageSize_StaticArena(StaticArena* arena) {
   arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, _getPageSize()) - (uintptr_t)arena->memory_;
   return SUCCESS;
 }
+uint8_t* PushLargeBlock_StaticArena(StaticArena* arena, int bytes) {
+  DEBUG_PRINT("Large block allocation of %d", bytes);
+  LargeMemBlock* new_block = Create_LargeMemBlock(bytes, arena->blocks_);
+  if (new_block == NULL) {
+    DEBUG_PRINT("Failed large block memory allocation");
+    return NULL;
+  }
+  arena->blocks_ = new_block;
+  return new_block->memory_;
+}
 uint8_t* PushNoZero_StaticArena(StaticArena* arena, int bytes) {
 #ifdef DEBUG
   if (arena == NULL) {
@@ -130,7 +144,7 @@ uint8_t* PushNoZero_StaticArena(StaticArena* arena, int bytes) {
     PushAligner_StaticArena(arena, arena->alignment_);
   }
   if (arena->position_ + bytes > arena->total_size_) {
-    return NULL;
+    return PushLargeBlock_StaticArena(arena, bytes);
   }
   uint8_t* ptr = arena->memory_ + arena->position_;
   arena->position_ += bytes;
@@ -146,7 +160,9 @@ uint8_t* Push_StaticArena(StaticArena* arena, int bytes) {
     PushAligner_StaticArena(arena, arena->alignment_);
   }
   if (arena->position_ + bytes > arena->total_size_) {
-    return NULL;
+    uint8_t* mem = PushLargeBlock_StaticArena(arena, bytes);
+    memset(mem, 0, bytes);
+    return mem;
   }
   uint8_t* ptr = arena->memory_ + arena->position_;
   arena->position_ += bytes;
@@ -191,6 +207,11 @@ int PopToAdress_StaticArena(StaticArena* arena, uint8_t* address) {
   }
   return SUCCESS;
 }
+int PopLargeBlock_StaticArena(StaticArena* arena) {
+  arena->blocks_ = Pop_LargeMemoryBlock(arena->blocks_);
+  return SUCCESS;
+}
+
 int Clear_StaticArena(StaticArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
@@ -198,17 +219,18 @@ int Clear_StaticArena(StaticArena* arena) {
   }
 #endif
   arena->position_ = 0;
+  Destroy_LargeMemBlocks(arena->blocks_);
   return SUCCESS;
 }
 
 // Essentially, the scratch space is another arena of the same type rooted at the top pointer. Only works for static I guess.
-int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* arena, int arena_size, int auto_align) {
+int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  uint8_t* mem = PushNoZero_StaticArena(arena, arena_size);
+  uint8_t* mem = PushNoZero_StaticArena(parent_arena, arena_size);
   if (mem == NULL) {
     return ERROR_OS_MEMORY;
   }
@@ -217,6 +239,7 @@ int InitScratch_StaticArena(StaticArena* scratch_space, StaticArena* arena, int 
 
   scratch_space->total_size_ = arena_size;
   scratch_space->position_   = 0;
+  scratch_space->blocks_     = NULL;
   int word_size              = WORD_SIZE;
   if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
     scratch_space->auto_align_ = TRUE;
@@ -235,7 +258,11 @@ int DestroyScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_a
   }
   // Null properties and pop memory
   parent_arena->position_ -= scratch_space->total_size_;
-  scratch_space->memory_     = NULL;
+  scratch_space->memory_ = NULL;
+
+  Destroy_LargeMemBlocks(scratch_space->blocks_);
+  scratch_space->blocks_ = NULL;
+
   scratch_space->total_size_ = 0;
   scratch_space->position_   = 0;
   scratch_space->auto_align_ = 0;
@@ -245,8 +272,12 @@ int DestroyScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_a
 int MergeScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_arena) {
   // Set the new position to conserve the memory from the scratch space and null properties
   // No need to do bounds check as the memory addresses must be properly ordered, and the position too.
-  parent_arena->position_    = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
-  scratch_space->memory_     = NULL;
+  parent_arena->position_ = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
+  scratch_space->memory_  = NULL;
+
+  parent_arena->blocks_  = Merge_LargeMemBlocks(scratch_space->blocks_, parent_arena->blocks_);
+  scratch_space->blocks_ = NULL;
+
   scratch_space->total_size_ = 0;
   scratch_space->position_   = 0;
   scratch_space->auto_align_ = 0;

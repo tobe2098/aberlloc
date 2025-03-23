@@ -26,10 +26,12 @@ typedef struct VirtualArena {
     // pthread_mutex_t __arena_mutex;
     int auto_align_;
     int alignment_;
+    int remapping;
     // VirtualArena*    __parent;
+    LargeMemBlock* blocks_;
 } VirtualArena;
 
-int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
+int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align, int remapping) {
 #ifdef DEBUG
   if (arena == NULL || arena_size < _getPageSize()) {
     return ERROR_INVALID_PARAMS;
@@ -37,6 +39,8 @@ int Init_VirtualArena(VirtualArena* arena, int arena_size, int auto_align) {
 #endif
   arena->total_size_ = arena_size;
   arena->position_   = 0;
+  arena->blocks_     = NULL;
+  arena->remapping   = remapping;
   // arena->__parent     = NULL;
   int word_size = WORD_SIZE;
   if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
@@ -64,6 +68,7 @@ int Destroy_VirtualArena(VirtualArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
+  Destroy_LargeMemBlocks(arena->blocks_);
   if (os_free_(arena->memory_, arena->total_size_) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
@@ -89,6 +94,17 @@ int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, int alignment) {
   arena->auto_align_ = TRUE;
   arena->alignment_  = alignment;
   return SUCCESS;
+}
+
+uint8_t* PushLargeBlock_VirtualArena(VirtualArena* arena, int bytes) {
+  DEBUG_PRINT("Large block allocation of %d", bytes);
+  LargeMemBlock* new_block = Create_LargeMemBlock(bytes, arena->blocks_);
+  if (new_block == NULL) {
+    DEBUG_PRINT("Failed large block memory allocation");
+    return NULL;
+  }
+  arena->blocks_ = new_block;
+  return new_block->memory_;
 }
 
 int ReMap_VirtualArena(VirtualArena* arena, int total_size) {
@@ -197,14 +213,18 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, int bytes) {
   if (arena->auto_align_) {
     PushAligner_VirtualArena(arena, arena->alignment_);
   }
-  while (arena->position_ + bytes > arena->committed_size_) {
-    if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
-      return NULL;
+  if (arena->position_ + bytes < arena->total_size_ || arena->remapping) {
+    while (arena->position_ + bytes > arena->committed_size_) {
+      if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+        return NULL;
+      }
     }
+  } else {
+    return PushLargeBlock_VirtualArena(arena, bytes);
   }
-  uint8_t* ptr = arena->memory_ + arena->position_;
+  uint8_t* mem = arena->memory_ + arena->position_;
   arena->position_ += bytes;
-  return ptr;
+  return mem;
 }
 uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
 #ifdef DEBUG
@@ -216,15 +236,21 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, int bytes) {
     PushAligner_VirtualArena(arena, arena->alignment_);
   }
 
-  while (arena->position_ + bytes > arena->committed_size_) {
-    if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
-      return NULL;
+  if (arena->position_ + bytes < arena->total_size_ || arena->remapping) {
+    while (arena->position_ + bytes > arena->committed_size_) {
+      if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+        return NULL;
+      }
     }
+  } else {
+    uint8_t* mem = PushLargeBlock_VirtualArena(arena, bytes);
+    memset(mem, 0, bytes);
+    return mem;
   }
-  uint8_t* ptr = arena->memory_ + arena->position_;
+  uint8_t* mem = arena->memory_ + arena->position_;
   arena->position_ += bytes;
-  memset(ptr, 0, bytes);
-  return ptr;
+  memset(mem, 0, bytes);
+  return mem;
 }
 
 int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
@@ -281,6 +307,11 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
   }
   return SUCCESS;
 }
+int PopLargeBlock_VirtualArena(VirtualArena* arena) {
+  arena->blocks_ = Pop_LargeMemoryBlock(arena->blocks_);
+  return SUCCESS;
+}
+
 int Clear_VirtualArena(VirtualArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
@@ -291,17 +322,18 @@ int Clear_VirtualArena(VirtualArena* arena) {
   if (ReduceCommit_VirtualArena(arena, _getPageSize()) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Reduce commit in Virtual arena failed");
   }
+  Destroy_LargeMemBlocks(arena->blocks_);
   return SUCCESS;
 }
 
 // Essentially, the scratch space is another arena of the same type rooted at the top pointer. Only works for static I guess.
-int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, int arena_size, int auto_align) {
+int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena, int arena_size, int auto_align) {
 #ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  uint8_t* mem = PushNoZero_VirtualArena(arena, arena_size);
+  uint8_t* mem = PushNoZero_VirtualArena(parent_arena, arena_size);
   if (mem == NULL) {
     return ERROR_OS_MEMORY;
   }
@@ -310,7 +342,10 @@ int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* arena, in
 
   scratch_space->total_size_ = arena_size;
   scratch_space->position_   = 0;
-  int word_size              = WORD_SIZE;
+
+  scratch_space->blocks_ = NULL;
+
+  int word_size = WORD_SIZE;
   if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
     scratch_space->auto_align_ = TRUE;
     scratch_space->alignment_  = auto_align;
@@ -328,7 +363,11 @@ int DestroyScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent
   }
   // Null properties and pop memory
   parent_arena->position_ -= scratch_space->total_size_;
-  scratch_space->memory_     = NULL;
+  scratch_space->memory_ = NULL;
+
+  Destroy_LargeMemBlocks(scratch_space->blocks_);
+  scratch_space->blocks_ = NULL;
+
   scratch_space->total_size_ = 0;
   scratch_space->position_   = 0;
   scratch_space->auto_align_ = 0;
@@ -339,8 +378,12 @@ int MergeScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_a
   // Merger must run under locked mutex of parent to make sure of correct behaviour.
   // Set the new position to conserve the memory from the scratch space and null properties
   // No need to do bounds check as the memory addresses must be properly ordered, and the position too.
-  parent_arena->position_    = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
-  scratch_space->memory_     = NULL;
+  parent_arena->position_ = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
+  scratch_space->memory_  = NULL;
+
+  parent_arena->blocks_  = Merge_LargeMemBlocks(scratch_space->blocks_, parent_arena->blocks_);
+  scratch_space->blocks_ = NULL;
+
   scratch_space->total_size_ = 0;
   scratch_space->position_   = 0;
   scratch_space->auto_align_ = 0;
