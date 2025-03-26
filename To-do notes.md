@@ -9,6 +9,8 @@
 4. Create a vector class that uses 3 & combo (vlarray) WITH ADDITIONAL PAGE TO HAVE HEADER, NOT PAGEALIGNED
 4.5. within arena scratch that leaves space for ret val, (Only in high capacity (either real or virtual))
 !!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).
+4.6 Before jemalloc, make the arenas self-allocate and deallocate by putting them at the front of the arena, no memory_page alignment. Could also remove the alignment need in the large memory block, or make it optional (only opt out if called pushblock).
+4.7 SuperSafeScratch (guarded by blocked pages, memset before and after(with volatile, avoid optimizing away)).
 5. Essentially jemalloc (arenas for small allocations, used with at least n mem, binary search of arena? and freelist for each. radix tree for large memblock headers, decay?)-> malloc and free
 5. (DEPRECATED) Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
     1. Free list in Red black tree? Or doubly linked list + RB tree

@@ -1,9 +1,9 @@
 #ifndef _UTILS_ABERLLOC_HEADER
 #define _UTILS_ABERLLOC_HEADER
+#include <stdbool.h>
 #ifdef _WIN32
 #ifdef __GNUC__
 
-static DWORD prot;
 #include <windows.h>
 // Compilation using msys2 env or similar
 #else
@@ -15,9 +15,8 @@ static DWORD prot;
 #endif
 #include "cache.h"
 // typedef unsigned long long size_t;
-typedef int bool;
-#define TRUE                   1
-#define FALSE                  0
+
+static DWORD prot;
 
 #define SUCCESS                0
 #define ERROR_OS_MEMORY        -1
@@ -53,7 +52,7 @@ static inline uintptr_t align_2pow(uintptr_t n, uintptr_t align) {
 
 static size_t PAGE_SIZE = 0;
 
-size_t _getPageSize(void) {
+static size_t _getPageSize(void) {
   if (!PAGE_SIZE) {
 #ifdef _WIN32
     SYSTEM_INFO si;
@@ -66,16 +65,16 @@ size_t _getPageSize(void) {
   return PAGE_SIZE;
 }
 
-inline uintptr_t extendPolicy(uintptr_t size) {
+static inline uintptr_t extendPolicy(uintptr_t size) {
   return size * 4;
 }
-inline uintptr_t reducePolicy(uintptr_t size) {
+static inline uintptr_t reducePolicy(uintptr_t size) {
   return size / 2;
 }
-inline int reduceCondition(uintptr_t used_size, uintptr_t comm_size) {
+static inline int reduceCondition(uintptr_t used_size, uintptr_t comm_size) {
   return comm_size / used_size >= 4;
 }
-inline uint8_t* os_new_virtual_mapping_(size_t size) {
+static inline uint8_t* os_new_virtual_mapping_(size_t size) {
   // We want to return ptr on success, NULL on failure
 #ifdef _WIN32
   return ((uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE));
@@ -85,7 +84,7 @@ inline uint8_t* os_new_virtual_mapping_(size_t size) {
 #endif
 }
 
-inline uint8_t* os_new_virtual_mapping_commit(size_t size) {
+static inline uint8_t* os_new_virtual_mapping_commit(size_t size) {
   // We want to return ptr on success, NULL on failure
 #ifdef _WIN32
   return ((uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
@@ -95,7 +94,7 @@ inline uint8_t* os_new_virtual_mapping_commit(size_t size) {
 #endif
 }
 
-inline int os_commit_(void* base_ptr, size_t size) {
+static inline int os_commit_(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualAlloc(base_ptr, size, MEM_COMMIT, PAGE_READWRITE) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -103,7 +102,7 @@ inline int os_commit_(void* base_ptr, size_t size) {
   return (madvise(base_ptr, size, MADV_WILLNEED) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
-inline int os_uncommit_(void* base_ptr, size_t size) {
+static inline int os_uncommit_(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualFree(base_ptr, size, MEM_DECOMMIT) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -112,7 +111,7 @@ inline int os_uncommit_(void* base_ptr, size_t size) {
 #endif
 }
 
-inline int os_protect_readonly(void* base_ptr, size_t size) {
+static inline int os_protect_readonly(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualProtect(base_ptr, size, PAGE_READONLY, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -120,7 +119,7 @@ inline int os_protect_readonly(void* base_ptr, size_t size) {
   return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
-inline int os_protect_readwrite(void* base_ptr, size_t size) {
+static inline int os_protect_readwrite(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualProtect(base_ptr, size, PAGE_READWRITE, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -128,7 +127,7 @@ inline int os_protect_readwrite(void* base_ptr, size_t size) {
   return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
-inline int os_protect_none(void* base_ptr, size_t size) {
+static inline int os_protect_none(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualProtect(base_ptr, size, PAGE_NOACCESS, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -145,7 +144,7 @@ inline int os_protect_none(void* base_ptr, size_t size) {
 // #endif
 // }
 // #else
-inline int os_free_(void* base_ptr, size_t size) {
+static inline int os_free_(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualFree(base_ptr, 0, MEM_RELEASE) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #else

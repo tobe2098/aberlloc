@@ -16,12 +16,11 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
-
 typedef struct LargeMemBlock {
-    uint8_t*       memory_;
-    uintptr_t      block_size_;
-    uintptr_t      header_size_;
-    LargeMemBlock* next_block_;
+    uint8_t*              memory_;
+    uintptr_t             block_size_;
+    uintptr_t             header_size_;
+    struct LargeMemBlock* next_block_;
 } LargeMemBlock;
 
 LargeMemBlock* Create_LargeMemBlock(int block_size, LargeMemBlock* next_block) {
@@ -52,7 +51,7 @@ LargeMemBlock* Pop_LargeMemoryBlock(LargeMemBlock* block) {
   }
 #endif
   LargeMemBlock* next_block  = block->next_block_;
-  uint8_t*       mem         = block;
+  uint8_t*       mem         = (uint8_t*)block;
   uintptr_t      block_size  = block->block_size_;
   uintptr_t      header_size = block->header_size_;
   os_protect_readwrite(block, block->header_size_);
@@ -78,7 +77,7 @@ int Destroy_LargeMemBlocks(LargeMemBlock* block) {
       DEBUG_PRINT("Bad params in destructor loop");
     }
   }
-  uint8_t*  mem         = block;
+  uint8_t*  mem         = (uint8_t*)block;
   uintptr_t block_size  = block->block_size_;
   uintptr_t header_size = block->header_size_;
   os_protect_readwrite(block, header_size);
