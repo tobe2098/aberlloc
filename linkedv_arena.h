@@ -171,7 +171,7 @@ int ExtendCommit_LinkedVArena(LinkedVArena* arena, int total_commited_size) {
 
   if (total_commited_size == arena->committed_size_) {
     DEBUG_PRINT("Not enough virtual memory in the block, creating a new one.");
-    if (NewBlock_LinkedVArena(arena, ) != SUCCESS) {
+    if (NewBlock_LinkedVArena(arena) != SUCCESS) {
       DEBUG_PRINT("Block creation failed");
       return ERROR_OS_MEMORY;
     }

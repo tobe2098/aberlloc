@@ -12,17 +12,18 @@
 4.6 Before jemalloc, make the arenas self-allocate and deallocate by putting them at the front of the arena, no memory_page alignment. Could also remove the alignment need in the large memory block, or make it optional (only opt out if called pushblock).
 4.7 SuperSafeScratch (guarded by blocked pages, memset before and after(with volatile, avoid optimizing away)).
 5. Essentially jemalloc (arenas for small allocations, used with at least n mem, binary search of arena? and freelist for each. radix tree for large memblock headers, decay?)-> malloc and free
-5. (DEPRECATED) Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
+5.5 Thread=local allocations management.
+<!-- 5. (DEPRECATED) Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
     1. Free list in Red black tree? Or doubly linked list + RB tree
-        - Make sure allocations do not spill over to other pages.
-6. Memory management depends on objects: Large size is memory page aligned, small size is inside a single page,
+        - Make sure allocations do not spill over to other pages. -->
+<!-- 6. Memory management depends on objects: Large size is memory page aligned, small size is inside a single page,
 medium sized has its own fixed-sized pools. (EXTENSION OF 5)
         - Finding best fit for memory slices.
         - Coalescing memory using backwards and forwards headers every free.
         - Make sure allocations do not spill over to other pages.
     3. Memory management with thread-local pools? Manage cache-line alignment
-    4. Bins for different size allocations, cache to keep track of the memory per bin
-
+    4. Bins for different size allocations, cache to keep track of the memory per bin -->
+6. Adapt to C++ allocators.
 
 
 
