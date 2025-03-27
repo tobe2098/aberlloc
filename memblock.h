@@ -16,12 +16,11 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
-
 typedef struct LargeMemBlock {
-    uint8_t*       memory_;
-    uintptr_t      block_size_;
-    uintptr_t      header_size_;
-    LargeMemBlock* next_block_;
+    uint8_t*              memory_;
+    uintptr_t             block_size_;
+    uintptr_t             header_size_;
+    struct LargeMemBlock* next_block_;
 } LargeMemBlock;
 
 LargeMemBlock* Create_LargeMemBlock(int block_size, LargeMemBlock* next_block) {
@@ -31,7 +30,7 @@ LargeMemBlock* Create_LargeMemBlock(int block_size, LargeMemBlock* next_block) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  uintptr_t total_size = align_2pow(block_size + sizeof(LargeMemBlock), _getPageSize());
+  uintptr_t total_size = align_2pow(align_2pow(block_size, _getPageSize()) + sizeof(LargeMemBlock), _getPageSize());
   uint8_t*  mem        = os_new_virtual_mapping_commit(total_size);
   if (mem == NULL) {
     return NULL;
@@ -52,7 +51,7 @@ LargeMemBlock* Pop_LargeMemoryBlock(LargeMemBlock* block) {
   }
 #endif
   LargeMemBlock* next_block  = block->next_block_;
-  uint8_t*       mem         = block;
+  uint8_t*       mem         = (uint8_t*)block;
   uintptr_t      block_size  = block->block_size_;
   uintptr_t      header_size = block->header_size_;
   os_protect_readwrite(block, block->header_size_);
@@ -78,7 +77,7 @@ int Destroy_LargeMemBlocks(LargeMemBlock* block) {
       DEBUG_PRINT("Bad params in destructor loop");
     }
   }
-  uint8_t*  mem         = block;
+  uint8_t*  mem         = (uint8_t*)block;
   uintptr_t block_size  = block->block_size_;
   uintptr_t header_size = block->header_size_;
   os_protect_readwrite(block, header_size);
