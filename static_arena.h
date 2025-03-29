@@ -1,8 +1,7 @@
 #ifndef _STATIC_ARENA_HEADER
 #define _STATIC_ARENA_HEADER
 // #include <pthread.h>
-#include <stdint.h>
-#include <stdlib.h>
+
 #include "./memblock.h"
 #include "./utils.h"
 #ifdef _WIN32
@@ -16,6 +15,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
+#include <stdint.h>
+#include <stdlib.h>
 // Fixed size arena, only manages power of two alignments based on word size (if not power of 2, error)
 // Single-threaded
 typedef struct StaticArena {
