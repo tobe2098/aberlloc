@@ -20,21 +20,25 @@
 // Fixed size arena, only manages power of two alignments based on word size (if not power of 2, error)
 // Single-threaded
 typedef struct LinkedVArena {
-    uint8_t*  memory_;    // Base pointer to reserved memory
+    uint8_t* memory_;    // Base pointer to reserved memory
+    uint8_t* base_ptr_;  // Current allocation position
+
     uintptr_t position_;  // Current allocation position
-    uintptr_t committed_size_;
+    uintptr_t add_committed_size_;
     uintptr_t total_size_;  // Size
     uintptr_t base_block_;
+    uintptr_t base_size_;
     // pthread_mutex_t __arena_mutex;
-    bool auto_align_;
-    int  alignment_;
-    bool newblock_pagealign_;
-
     LinkedVArena*  next_arena_;
     LargeMemBlock* blocks_;
+
+    uintptr_t alignment_;
+    bool      auto_align_;
+    bool      newblock_pagealign_;
+
 } LinkedVArena;
 
-int Init_LinkedVArena(LinkedVArena* arena, int arena_size, bool auto_align, bool newblock_pagealign) {
+int Init_LinkedVArena(LinkedVArena* arena, uintptr_t arena_size, bool auto_align, bool newblock_pagealign) {
 #ifdef DEBUG
   if (arena == NULL || arena_size < _getPageSize()) {
     return ERROR_INVALID_PARAMS;
@@ -43,24 +47,32 @@ int Init_LinkedVArena(LinkedVArena* arena, int arena_size, bool auto_align, bool
   arena->base_block_ = align_2pow(arena_size, _getPageSize());
   arena->total_size_ = arena->base_block_ + align_2pow(sizeof(LinkedVArena), _getPageSize());
   arena->position_   = 0;
+
   // arena->__parent     = NULL;
   int word_size              = WORD_SIZE;
   arena->newblock_pagealign_ = newblock_pagealign;
-  arena->blocks_             = NULL;
+  if (newblock_pagealign) {
+    arena->base_ptr_  = arena->memory_ + (arena->total_size_ - arena->base_block_);
+    arena->base_size_ = arena->base_block_;
+  } else {
+    arena->base_ptr_  = arena->memory_ + sizeof(LinkedVArena);
+    arena->base_size_ = arena->total_size_ - sizeof(LinkedVArena);
+  }
+  arena->blocks_ = NULL;
   if (auto_align > word_size && __builtin_popcount(auto_align) == 1) {
-    arena->auto_align_ = TRUE;
+    arena->auto_align_ = true;
     arena->alignment_  = auto_align;
   } else {
-    arena->auto_align_ = FALSE;
+    arena->auto_align_ = false;
     arena->alignment_  = word_size;
   }
-  arena->committed_size_ = _getPageSize();
-  arena->memory_         = os_new_virtual_mapping_(arena->total_size_);
-  arena->next_arena_     = NULL;
+  arena->add_committed_size_ = _getPageSize();
+  arena->memory_             = os_new_virtual_mapping_(arena->total_size_);
+  arena->next_arena_         = NULL;
   if (arena->memory_ == NULL) {
     return ERROR_OS_MEMORY;
   }
-  if (os_commit_(arena->memory_, _getPageSize() + arena->committed_size_) == ERROR_OS_MEMORY) {
+  if (os_commit_(arena->memory_, arena->total_size_ - arena->base_block_ + arena->add_committed_size_) == ERROR_OS_MEMORY) {
     os_free_(arena->memory_, arena->total_size_);
     return ERROR_OS_MEMORY;
   }
@@ -85,18 +97,20 @@ int Destroy_LinkedVArena(LinkedVArena* arena) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
 
-  arena->memory_         = NULL;
-  arena->total_size_     = 0;
-  arena->committed_size_ = 0;
-  arena->position_       = 0;
-  arena->auto_align_     = 0;
-  arena->alignment_      = 0;
-  arena->next_arena_     = NULL;
-  arena->blocks_         = NULL;
+  arena->memory_             = NULL;
+  arena->base_ptr_           = NULL;
+  arena->base_size_          = 0;
+  arena->total_size_         = 0;
+  arena->add_committed_size_ = 0;
+  arena->position_           = 0;
+  arena->auto_align_         = 0;
+  arena->alignment_          = 0;
+  arena->next_arena_         = NULL;
+  arena->blocks_             = NULL;
   return SUCCESS;
 }
 
-int SetAutoAlign2Pow_LinkedVArena(LinkedVArena* arena, int alignment) {
+int SetAutoAlign2Pow_LinkedVArena(LinkedVArena* arena, uintptr_t alignment, bool auto_align) {
 #ifdef DEBUG
   if (arena == NULL) {
     return ERROR_INVALID_PARAMS;
@@ -105,8 +119,11 @@ int SetAutoAlign2Pow_LinkedVArena(LinkedVArena* arena, int alignment) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->auto_align_ = TRUE;
-  arena->alignment_  = alignment;
+  arena->auto_align_ = auto_align;
+  if (!auto_align) {
+    return SUCCESS;
+  }
+  arena->alignment_ = alignment;
   return SUCCESS;
 }
 int Set_NewBlock_PageAlign(LinkedVArena* arena, bool boolean_val) {
@@ -152,9 +169,13 @@ int NewBlock_LinkedVArena(LinkedVArena* arena) {
   return SUCCESS;
 }
 
-int ExtendCommit_LinkedVArena(LinkedVArena* arena, int total_commited_size) {
+int ExtendCommit_LinkedVArena(LinkedVArena* arena, uintptr_t total_commited_size) {
 #ifdef DEBUG
-  if (!arena || !total_commited_size || total_commited_size < arena->committed_size_) {
+  if (!arena || !total_commited_size) {
+    return ERROR_INVALID_PARAMS;
+  }
+  if (total_commited_size < arena->committed_size_) {
+    DEBUG_PRINT("Possible overflow");
     return ERROR_INVALID_PARAMS;
   }
   if (total_commited_size > arena->base_block_ && arena->base_block_ == arena->committed_size_) {
@@ -169,31 +190,33 @@ int ExtendCommit_LinkedVArena(LinkedVArena* arena, int total_commited_size) {
     total_commited_size = arena->base_block_;
   }
 
-  if (total_commited_size == arena->committed_size_) {
+  if (total_commited_size == arena->add_committed_size_) {
     DEBUG_PRINT("Not enough virtual memory in the block, creating a new one.");
     if (NewBlock_LinkedVArena(arena) != SUCCESS) {
       DEBUG_PRINT("Block creation failed");
       return ERROR_OS_MEMORY;
     }
   } else {
-    if (os_commit_(arena->memory_, total_commited_size) == ERROR_OS_MEMORY) {
+    if (os_commit_(arena->memory_, arena->total_size_ - arena->base_block_ + total_commited_size) == ERROR_OS_MEMORY) {
       return ERROR_OS_MEMORY;
     }
+    arena->add_committed_size_ = total_commited_size;
   }
   // We only need to extend the memory commitment under the total size.
 
-  arena->committed_size_ = total_commited_size;
+  return SUCCESS;
 }
-int ReduceCommit_LinkedVArena(LinkedVArena* arena, int total_commited_size) {
+int ReduceCommit_LinkedVArena(LinkedVArena* arena, uintptr_t total_commited_size) {
 #ifdef DEBUG
   if (!arena || !total_commited_size || total_commited_size > arena->__commited_size) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  if (os_uncommit_(arena->memory_ + total_commited_size, arena->committed_size_ - total_commited_size) == ERROR_OS_MEMORY) {
+  if (os_uncommit_(arena->memory_ + (arena->total_size_ - arena->base_block_) + total_commited_size,
+                   arena->add_committed_size_ - total_commited_size) == ERROR_OS_MEMORY) {
     return ERROR_OS_MEMORY;
   }
-  arena->committed_size_ = total_commited_size;
+  arena->add_committed_size_ = total_commited_size;
 }
 uintptr_t GetPos_LinkedVArena(LinkedVArena* arena) {
 #ifdef DEBUG
@@ -204,7 +227,7 @@ uintptr_t GetPos_LinkedVArena(LinkedVArena* arena) {
   return arena->position_;
 }
 
-int PushAligner_LinkedVArena(LinkedVArena* arena, int alignment) {
+int PushAligner_LinkedVArena(LinkedVArena* arena, uintptr_t alignment) {
 #ifdef DEBUG
   if (arena == NULL) {
     return ERROR_INVALID_PARAMS;
@@ -213,7 +236,7 @@ int PushAligner_LinkedVArena(LinkedVArena* arena, int alignment) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = align_2pow(arena->position_, alignment);
+  arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->base_ptr_, alignment) - (uintptr_t)arena->base_ptr_;
   // arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   return SUCCESS;
 }
@@ -224,7 +247,7 @@ int PushAlignerCacheLine_LinkedVArena(LinkedVArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, CACHE_LINE_SIZE) - (uintptr_t)arena->memory_;
+  arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->base_ptr_, CACHE_LINE_SIZE) - (uintptr_t)arena->base_ptr_;
   return SUCCESS;
 }
 
@@ -238,7 +261,7 @@ int PushAlignerPageSize_LinkedVArena(LinkedVArena* arena) {
   return SUCCESS;
 }
 
-uint8_t* PushNoZero_LinkedVArena(LinkedVArena* arena, int bytes) {
+uint8_t* PushNoZero_LinkedVArena(LinkedVArena* arena, uintptr_t bytes) {
 #ifdef DEBUG
   if (arena == NULL) {
     return NULL;
@@ -247,8 +270,8 @@ uint8_t* PushNoZero_LinkedVArena(LinkedVArena* arena, int bytes) {
   if (arena->auto_align_) {
     PushAligner_LinkedVArena(arena, arena->alignment_);
   }
-  while (arena->position_ + bytes > arena->committed_size_) {
-    if (ExtendCommit_LinkedVArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ + bytes > arena->add_committed_size_) {
+    if (ExtendCommit_LinkedVArena(arena, extendPolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
       return NULL;
     }
   }
@@ -256,7 +279,7 @@ uint8_t* PushNoZero_LinkedVArena(LinkedVArena* arena, int bytes) {
   arena->position_ += bytes;
   return ptr;
 }
-uint8_t* Push_LinkedVArena(LinkedVArena* arena, int bytes) {
+uint8_t* Push_LinkedVArena(LinkedVArena* arena, uintptr_t bytes) {
 #ifdef DEBUG
   if (arena == NULL) {
     return NULL;
@@ -266,8 +289,8 @@ uint8_t* Push_LinkedVArena(LinkedVArena* arena, int bytes) {
     PushAligner_LinkedVArena(arena, arena->alignment_);
   }
 
-  while (arena->position_ + bytes > arena->committed_size_) {
-    if (ExtendCommit_LinkedVArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ + bytes > arena->add_committed_size_) {
+    if (ExtendCommit_LinkedVArena(arena, extendPolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
       return NULL;
     }
   }
@@ -289,8 +312,8 @@ int Pop_LinkedVArena(LinkedVArena* arena, uintptr_t bytes) {
     bytes = arena->position_;
   }
   arena->position_ -= bytes;
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_LinkedVArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ > _getPageSize() && reduceCondition(arena->add_committed_size_, arena->position_)) {
+    if (ReduceCommit_LinkedVArena(arena, reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -305,8 +328,8 @@ int PopTo_LinkedVArena(LinkedVArena* arena, uintptr_t position) {
   if (position < arena->position_) {
     arena->position_ = position;
   }
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_LinkedVArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ > _getPageSize() && reduceCondition(arena->add_committed_size_, arena->position_)) {
+    if (ReduceCommit_LinkedVArena(arena, reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -324,8 +347,8 @@ int PopToAdress_LinkedVArena(LinkedVArena* arena, uint8_t* address) {
   } else {
     DEBUG_PRINT("Address is outside the memory in use in PopToAddress");
   }
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_LinkedVArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ > _getPageSize() && reduceCondition(arena->add_committed_size_, arena->position_)) {
+    if (ReduceCommit_LinkedVArena(arena, reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -382,7 +405,7 @@ int ClearAll_LinkedVArena(LinkedVArena* arena) {
 }
 
 // Essentially, the scratch space is another arena of the same type rooted at the top pointer. Only works for static I guess.
-int InitScratch_LinkedVArena(StaticArena* scratch_space, LinkedVArena* arena, int arena_size, int auto_align) {
+int InitScratch_LinkedVArena(StaticArena* scratch_space, LinkedVArena* arena, uintptr_t arena_size, uintptr_t auto_align) {
 #ifdef DEBUG
   if (scratch_space == NULL || scratch_space == NULL) {
     return ERROR_INVALID_PARAMS;
