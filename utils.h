@@ -66,10 +66,10 @@ static size_t _getPageSize(void) {
 }
 
 static inline uintptr_t extendPolicy(uintptr_t size) {
-  return size * 4;
+  return size << 2;  // Opt *4
 }
 static inline uintptr_t reducePolicy(uintptr_t size) {
-  return size / 2;
+  return size >> 1;  // Opt /2
 }
 static inline int reduceCondition(uintptr_t used_size, uintptr_t comm_size) {
   return comm_size / used_size >= 4;
