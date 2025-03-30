@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "static_arena.h"
-
+#include "virtual_arena.h"
 int main() {
   bool a = 0;
 
