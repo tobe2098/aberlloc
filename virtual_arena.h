@@ -181,7 +181,7 @@ int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = align_2pow(arena->position_, alignment);
+  arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->memory_, alignment) - (uintptr_t)arena->memory_;
   // arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   return SUCCESS;
 }
