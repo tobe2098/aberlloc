@@ -2,6 +2,12 @@
 (Mainly posix, remember all arenas should use a mutex to avoid threading problems).
 1. Fixed size buffer with functions like the video (simple arena malloc) DONE
 2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost) IN PROGRESS
+ - Memblock single linked list delte (done) for destroy memblock in static(done) and virtual(done). IN linkedv_arena same but single linked list to see if it is there (error if not on the top) or large page.
+ - Pass scratch fixes
+ - Fix large block address pass
+ - Make pagealign of starting arena not optional, protect first page for readonly linkedv (remove all the base_ptr stuff)
+ - Add large memblocks to Linkedv (only if size exceeds total size) and all funcs
+ - Think about using .c linked library to hide unnecessary functions.
 2.5 Add error flags for the -1 returns DONE
 3. Virtual memory mapping extension (virtual mmap malloc) DONE
 3.1 Scratch spaces mmaps (QuickScratch->StaticArena? Cannot merge)

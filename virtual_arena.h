@@ -24,7 +24,7 @@ typedef struct VirtualArena {
     uintptr_t committed_size_;
     uintptr_t total_size_;  // Size
     // pthread_mutex_t __arena_mutex;
-    LargeMemBlock* blocks_;
+    _LargeMemBlock* blocks_;
 
     uintptr_t alignment_;
     bool      auto_align_;
@@ -57,7 +57,7 @@ int Init_VirtualArena(VirtualArena* arena, uintptr_t arena_size, uintptr_t auto_
     return ERROR_OS_MEMORY;
   }
   if (os_commit_(arena->memory_, arena->committed_size_) == ERROR_OS_MEMORY) {
-    os_free_(arena->memory_, arena->total_size_);
+    _os_free(arena->memory_, arena->total_size_);
     return ERROR_OS_MEMORY;
   }
   return SUCCESS;
@@ -70,9 +70,9 @@ int Destroy_VirtualArena(VirtualArena* arena) {
   }
 #endif
   if (arena->blocks_ != NULL) {
-    Destroy_LargeMemBlocks(arena->blocks_);
+    _DestroyAll_LargeMemBlocks(arena->blocks_);
   }
-  if (os_free_(arena->memory_, arena->total_size_) == ERROR_OS_MEMORY) {
+  if (_os_free(arena->memory_, arena->total_size_) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
 
@@ -106,13 +106,13 @@ int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, uintptr_t alignment, bool
 
 uint8_t* PushLargeBlock_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
   DEBUG_PRINT("Large block allocation of %d", bytes);
-  LargeMemBlock* new_block = Create_LargeMemBlock(bytes, arena->blocks_);
+  _LargeMemBlock* new_block = _Create_LargeMemBlock(bytes, arena->blocks_);
   if (new_block == NULL) {
     DEBUG_PRINT("Failed large block memory allocation");
     return NULL;
   }
   arena->blocks_ = new_block;
-  return new_block->memory_;
+  return new_block->memory_ + new_block->header_size_;
 }
 
 int ReMap_VirtualArena(VirtualArena* arena, uintptr_t total_size) {
@@ -127,21 +127,21 @@ int ReMap_VirtualArena(VirtualArena* arena, uintptr_t total_size) {
     return ERROR_OS_MEMORY;
   }
   if (os_commit_(new_memory, total_size) == ERROR_OS_MEMORY) {
-    if (os_free_(new_memory, total_size) == ERROR_OS_MEMORY) {
+    if (_os_free(new_memory, total_size) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Freeing new virtual memory block did not work during destruction. Virtual memory leaked.");
     }
     return ERROR_OS_MEMORY;
   }
   memcpy(new_memory, arena->memory_, arena->position_);
   // We cannot tolerate failure after this, as we have two blocks of memory to manage. It has to be freed
-  if (os_free_(arena->memory_, arena->total_size_) != 0) {
+  if (_os_free(arena->memory_, arena->total_size_) != 0) {
     DEBUG_PRINT("Freeing old virtual memory did not work during destruction. Memory leaked.");
   }
   arena->memory_ = new_memory;
   return SUCCESS;
 }
 
-int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
+int ExtendCommit_VirtualArena(VirtualArena* arena, uintptr_t total_commited_size) {
 #ifdef DEBUG
   if (!arena || !total_commited_size || total_commited_size < arena->committed_size_) {
     return ERROR_INVALID_PARAMS;
@@ -160,7 +160,7 @@ int ExtendCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
   }
   arena->committed_size_ = total_commited_size;
 }
-int ReduceCommit_VirtualArena(VirtualArena* arena, int total_commited_size) {
+int ReduceCommit_VirtualArena(VirtualArena* arena, uintptr_t total_commited_size) {
 #ifdef DEBUG
   if (!arena || !total_commited_size || total_commited_size > arena->__commited_size) {
     return ERROR_INVALID_PARAMS;
@@ -180,7 +180,7 @@ uintptr_t GetPos_VirtualArena(VirtualArena* arena) {
   return arena->position_;
 }
 
-int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
+int PushAligner_VirtualArena(VirtualArena* arena, uintptr_t alignment) {
 #ifdef DEBUG
   if (arena == NULL) {
     return ERROR_INVALID_PARAMS;
@@ -189,7 +189,7 @@ int PushAligner_VirtualArena(VirtualArena* arena, int alignment) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = align_2pow(arena->position_, alignment);
+  arena->position_ = _align_2pow(arena->position_, alignment);
   // arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   return SUCCESS;
 }
@@ -200,7 +200,7 @@ int PushAlignerCacheLine_VirtualArena(VirtualArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = align_2pow(arena->position_, CACHE_LINE_SIZE);
+  arena->position_ = _align_2pow(arena->position_, CACHE_LINE_SIZE);
   return SUCCESS;
 }
 int PushAlignerPageSize_VirtualArena(VirtualArena* arena) {
@@ -209,7 +209,7 @@ int PushAlignerPageSize_VirtualArena(VirtualArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = align_2pow(arena->position_, _getPageSize());
+  arena->position_ = _align_2pow(arena->position_, _getPageSize());
   return SUCCESS;
 }
 uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
@@ -228,6 +228,7 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
       }
     }
   } else {
+    DEBUG_PRINT("Allocating in a large memory block.");
     return PushLargeBlock_VirtualArena(arena, bytes);
   }
   uint8_t* mem = arena->memory_ + arena->position_;
@@ -251,7 +252,11 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
       }
     }
   } else {
+    DEBUG_PRINT("Allocating in a large memory block.");
     uint8_t* mem = PushLargeBlock_VirtualArena(arena, bytes);
+    if (mem == NULL) {
+      return NULL;
+    }
     memset(mem, 0, bytes);
     return mem;
   }
@@ -316,7 +321,7 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
   return SUCCESS;
 }
 int PopLargeBlock_VirtualArena(VirtualArena* arena) {
-  arena->blocks_ = Pop_LargeMemoryBlock(arena->blocks_);
+  arena->blocks_ = _Pop_LargeMemoryBlock(arena->blocks_);
   return SUCCESS;
 }
 
@@ -330,7 +335,7 @@ int Clear_VirtualArena(VirtualArena* arena) {
   if (ReduceCommit_VirtualArena(arena, _getPageSize()) == ERROR_OS_MEMORY) {
     DEBUG_PRINT("Reduce commit in Virtual arena failed");
   }
-  Destroy_LargeMemBlocks(arena->blocks_);
+  _DestroyAll_LargeMemBlocks(arena->blocks_);
   return SUCCESS;
 }
 
@@ -366,14 +371,24 @@ int InitScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_ar
 int DestroyScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_arena) {
   // Make sure you destroy arenas in reverse order on which you created them for correctness.
   // Check for position overflow in the memory pop.
-  if (parent_arena->position_ < scratch_space->total_size_) {
-    parent_arena->position_ = scratch_space->total_size_;
+  if (scratch_space->memory_ != parent_arena->memory_ + parent_arena->position_ - scratch_space->total_size_) {
+    DEBUG_PRINT("Cannot destroy a scratch space if there was memory allocated afterwards in the arena.");
+    return ERROR_INVALID_PARAMS;
   }
-  // Null properties and pop memory
-  parent_arena->position_ -= scratch_space->total_size_;
+  if (!(scratch_space->memory_ >= parent_arena->memory_ && scratch_space->memory_ < parent_arena->memory_ + parent_arena->total_size_)) {
+    if (_DeleteSingle_LargeMemBlock(parent_arena->blocks_, scratch_space->memory_) == ERROR_INVALID_PARAMS) {
+      DEBUG_PRINT("The block was not found");
+    }
+  } else {
+    if (parent_arena->position_ < scratch_space->total_size_) {
+      parent_arena->position_ = scratch_space->total_size_;
+    }
+    // Null properties and pop memory
+    parent_arena->position_ -= scratch_space->total_size_;
+  }
   scratch_space->memory_ = NULL;
 
-  Destroy_LargeMemBlocks(scratch_space->blocks_);
+  _DestroyAll_LargeMemBlocks(scratch_space->blocks_);
   scratch_space->blocks_ = NULL;
 
   scratch_space->total_size_ = 0;
@@ -386,10 +401,15 @@ int MergeScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent_a
   // Merger must run under locked mutex of parent to make sure of correct behaviour.
   // Set the new position to conserve the memory from the scratch space and null properties
   // No need to do bounds check as the memory addresses must be properly ordered, and the position too.
-  parent_arena->position_ = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
+  if (!(scratch_space->memory_ >= parent_arena->memory_ && scratch_space->memory_ < parent_arena->memory_ + parent_arena->total_size_)) {
+    DEBUG_PRINT("Cannot merge a scratch space allocated in a large memory block");
+    return ERROR_INVALID_PARAMS;
+  }
+  parent_arena->position_ = max(((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_,
+                                parent_arena->position_ - (scratch_space->total_size_ - scratch_space->position_));
   scratch_space->memory_  = NULL;
 
-  parent_arena->blocks_  = Merge_LargeMemBlocks(scratch_space->blocks_, parent_arena->blocks_);
+  parent_arena->blocks_  = _Merge_LargeMemBlocks(scratch_space->blocks_, parent_arena->blocks_);
   scratch_space->blocks_ = NULL;
 
   scratch_space->total_size_ = 0;
