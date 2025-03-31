@@ -56,7 +56,7 @@ int Init_VirtualArena(VirtualArena* arena, uintptr_t arena_size, uintptr_t auto_
   if (arena->memory_ == NULL) {
     return ERROR_OS_MEMORY;
   }
-  if (os_commit_(arena->memory_, arena->committed_size_) == ERROR_OS_MEMORY) {
+  if (_os_commit(arena->memory_, arena->committed_size_) == ERROR_OS_MEMORY) {
     _os_free(arena->memory_, arena->total_size_);
     return ERROR_OS_MEMORY;
   }
@@ -105,10 +105,10 @@ int SetAutoAlign2Pow_VirtualArena(VirtualArena* arena, uintptr_t alignment, bool
 }
 
 uint8_t* PushLargeBlock_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
-  DEBUG_PRINT("Large block allocation of %d", bytes);
+  DEBUG_PRINT("Large block allocation of %d.", bytes);
   _LargeMemBlock* new_block = _Create_LargeMemBlock(bytes, arena->blocks_);
   if (new_block == NULL) {
-    DEBUG_PRINT("Failed large block memory allocation");
+    DEBUG_PRINT("Failed large block memory allocation.");
     return NULL;
   }
   arena->blocks_ = new_block;
@@ -126,7 +126,7 @@ int ReMap_VirtualArena(VirtualArena* arena, uintptr_t total_size) {
   if (new_memory == NULL) {
     return ERROR_OS_MEMORY;
   }
-  if (os_commit_(new_memory, total_size) == ERROR_OS_MEMORY) {
+  if (_os_commit(new_memory, total_size) == ERROR_OS_MEMORY) {
     if (_os_free(new_memory, total_size) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Freeing new virtual memory block did not work during destruction. Virtual memory leaked.");
     }
@@ -155,7 +155,7 @@ int ExtendCommit_VirtualArena(VirtualArena* arena, uintptr_t total_commited_size
     }
   }
   // We only need to extend the memory commitment under the total size.
-  if (os_commit_(arena->memory_, total_commited_size) == ERROR_OS_MEMORY) {
+  if (_os_commit(arena->memory_, total_commited_size) == ERROR_OS_MEMORY) {
     return ERROR_OS_MEMORY;
   }
   arena->committed_size_ = total_commited_size;
@@ -166,7 +166,7 @@ int ReduceCommit_VirtualArena(VirtualArena* arena, uintptr_t total_commited_size
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  if (os_uncommit_(arena->memory_ + total_commited_size, arena->committed_size_ - total_commited_size) == ERROR_OS_MEMORY) {
+  if (_os_uncommit(arena->memory_ + total_commited_size, arena->committed_size_ - total_commited_size) == ERROR_OS_MEMORY) {
     return ERROR_OS_MEMORY;
   }
   arena->committed_size_ = total_commited_size;
@@ -221,7 +221,7 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
   if (arena->auto_align_) {
     PushAligner_VirtualArena(arena, arena->alignment_);
   }
-  if (arena->position_ + bytes < arena->total_size_ || arena->remapping) {
+  if (bytes <= arena->total_size_ / 2 && arena->remapping) {
     while (arena->position_ + bytes > arena->committed_size_) {
       if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
         return NULL;
@@ -380,9 +380,9 @@ int DestroyScratch_VirtualArena(StaticArena* scratch_space, VirtualArena* parent
       DEBUG_PRINT("The block was not found");
     }
   } else {
-    if (parent_arena->position_ < scratch_space->total_size_) {
-      parent_arena->position_ = scratch_space->total_size_;
-    }
+    // if (parent_arena->position_ < scratch_space->total_size_) {
+    //   parent_arena->position_ = scratch_space->total_size_;
+    // }
     // Null properties and pop memory
     parent_arena->position_ -= scratch_space->total_size_;
   }

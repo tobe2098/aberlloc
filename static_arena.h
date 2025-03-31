@@ -131,10 +131,10 @@ int PushAlignerPageSize_StaticArena(StaticArena* arena) {
   return SUCCESS;
 }
 uint8_t* PushLargeBlock_StaticArena(StaticArena* arena, uintptr_t bytes) {
-  DEBUG_PRINT("Large block allocation of %d", bytes);
+  DEBUG_PRINT("Large block allocation of %d.", bytes);
   _LargeMemBlock* new_block = _Create_LargeMemBlock(bytes, arena->blocks_);
   if (new_block == NULL) {
-    DEBUG_PRINT("Failed large block memory allocation");
+    DEBUG_PRINT("Failed large block memory allocation.");
     return NULL;
   }
   arena->blocks_ = new_block;
@@ -271,11 +271,12 @@ int DestroyScratch_StaticArena(StaticArena* scratch_space, StaticArena* parent_a
   if (!(scratch_space->memory_ >= parent_arena->memory_ && scratch_space->memory_ < parent_arena->memory_ + parent_arena->total_size_)) {
     if (_DeleteSingle_LargeMemBlock(parent_arena->blocks_, scratch_space->memory_) == ERROR_INVALID_PARAMS) {
       DEBUG_PRINT("The block was not found");
+      return ERROR_INVALID_PARAMS;
     }
   } else {
-    if (parent_arena->position_ < scratch_space->total_size_) {
-      parent_arena->position_ = scratch_space->total_size_;
-    }
+    // if (parent_arena->position_ < scratch_space->total_size_) {
+    //   parent_arena->position_ = scratch_space->total_size_;
+    // }
     // Null properties and pop memory
     parent_arena->position_ -= scratch_space->total_size_;
   }
