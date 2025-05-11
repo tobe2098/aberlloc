@@ -52,7 +52,7 @@ int Init_VirtualArena(VirtualArena* arena, uintptr_t arena_size, uintptr_t auto_
     arena->alignment_  = word_size;
   }
   arena->committed_size_ = _getPageSize();
-  arena->memory_         = os_new_virtual_mapping_(arena->total_size_);
+  arena->memory_         = _os_new_virtual_mapping(arena->total_size_);
   if (arena->memory_ == NULL) {
     return ERROR_OS_MEMORY;
   }
@@ -122,7 +122,7 @@ int ReMap_VirtualArena(VirtualArena* arena, uintptr_t total_size) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  uint8_t* new_memory = os_new_virtual_mapping_(total_size);
+  uint8_t* new_memory = _os_new_virtual_mapping(total_size);
   if (new_memory == NULL) {
     return ERROR_OS_MEMORY;
   }
@@ -149,7 +149,7 @@ int ExtendCommit_VirtualArena(VirtualArena* arena, uintptr_t total_commited_size
 #endif
   if (total_commited_size > arena->total_size_) {
     DEBUG_PRINT("Not enough virtual memory in the arena, remapping.");
-    if (!ReMap_VirtualArena(arena, extendPolicy(arena->total_size_))) {
+    if (!ReMap_VirtualArena(arena, _extendPolicy(arena->total_size_))) {
       DEBUG_PRINT("Remap failed, not enough memory.");
       return ERROR_OS_MEMORY;
     }
@@ -223,7 +223,7 @@ uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
   }
   if (bytes <= arena->total_size_ / 2 && arena->remapping) {
     while (arena->position_ + bytes > arena->committed_size_) {
-      if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+      if (ExtendCommit_VirtualArena(arena, _extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
         return NULL;
       }
     }
@@ -247,7 +247,7 @@ uint8_t* Push_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
 
   if (arena->position_ + bytes < arena->total_size_ || arena->remapping) {
     while (arena->position_ + bytes > arena->committed_size_) {
-      if (ExtendCommit_VirtualArena(arena, extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+      if (ExtendCommit_VirtualArena(arena, _extendPolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
         return NULL;
       }
     }
@@ -278,8 +278,8 @@ int Pop_VirtualArena(VirtualArena* arena, uintptr_t bytes) {
     bytes = arena->position_;
   }
   arena->position_ -= bytes;
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ > _getPageSize() && _reduceCondition(arena->committed_size_, arena->position_)) {
+    if (ReduceCommit_VirtualArena(arena, _reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -294,8 +294,8 @@ int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
   if (position < arena->position_) {
     arena->position_ = position;
   }
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ > _getPageSize() && _reduceCondition(arena->committed_size_, arena->position_)) {
+    if (ReduceCommit_VirtualArena(arena, _reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -313,8 +313,8 @@ int PopToAdress_VirtualArena(VirtualArena* arena, uint8_t* address) {
   } else {
     DEBUG_PRINT("Address is outside the memory in use in PopToAddress");
   }
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->committed_size_, arena->position_)) {
-    if (ReduceCommit_VirtualArena(arena, reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ > _getPageSize() && _reduceCondition(arena->committed_size_, arena->position_)) {
+    if (ReduceCommit_VirtualArena(arena, _reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }

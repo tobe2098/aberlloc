@@ -9,51 +9,16 @@
  - Add large memblocks to Linkedv (only if size exceeds total size) and all funcs (discarded)
 2.5 Add error flags for the -1 returns DONE
 3. Virtual memory mapping extension (virtual mmap malloc) DONE
-3.1 Scratch spaces mmaps (QuickScratch->StaticArena? Cannot merge)
+3.1 Scratch spaces mmaps (QuickScratch->StaticArena? Cannot merge) and not really quick
 - Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc) (VirtualLinkedArena)
 4. Create a vector class that uses 3 & combo (vlarray) WITH ADDITIONAL PAGE TO HAVE HEADER, NOT PAGEALIGNED
 4.5. within arena scratch that leaves space for ret val, (Only in high capacity (either real or virtual))
 !!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).
 4.6 Before jemalloc, make the arenas self-allocate and deallocate by putting them at the front of the arena, no memory_page alignment. Could also remove the alignment need in the large memory block, or make it optional (only opt out if called pushblock).
 4.7 SuperSafeScratch (guarded by blocked pages, memset before and after(with volatile, avoid optimizing away)).
-5. Essentially jemalloc (arenas for small allocations, used with at least n mem, binary search of arena? and freelist for each. radix tree for large memblock headers, decay?)-> malloc and free
-5.5 Thread=local allocations management.
-In allocator, important to avoid reallocs if possible, so arrays get their own varena, and how do I get safety? Protected arenas? But then I cannot realloc, frag is very bad and how do I free? Free only when whole block? Do that for smaller than page and then for larger each gets its own?
-Realloc is a big problem though. Incorporate with jemallic this, safe allocs have their own function? And remember the threadlocal smallmediums.
-Function pointer macro definition call to do stack allocations (dalloc or lalloc?)?
-Threads are assigned to arenas using a round-robin strategy
-Default arena count is 4× the number of CPU cores
-Each arena has its own set of bins and metadata
-Arenas are not created on-demand but pre-allocated at initialization 
-emalloc is more CPU-aware than glibc malloc
-It can detect CPU topology and create arenas that better match NUMA architecture
-Each arena typically serves threads that run on nearby cores
----
-One of jemalloc's key features is its extensive thread-local caching:
 
-Each thread maintains a cache of recently freed objects
-The cache is organized by size class
-Allocations and deallocations happen directly from/to this cache when possible
-Only when the cache is empty or full does the thread interact with the shared arena
----
-Coalescing Strategy
-jemalloc handles coalescing differently than glibc:
-
-Memory is managed in "runs" of pages for each size class
-When objects are freed, they're marked as available in a bitmap
-Instead of immediate coalescing, jemalloc focuses on whole-page reclamation
-When a page becomes empty, it can be returned to the global page allocator
-This approach minimizes fragmentation by working at page-level granularity
----
-jemalloc is more aggressive about returning memory to the OS:
-
-Maintains statistics on allocation patterns
-Periodically scans for empty or mostly-empty pages
-Uses madvise(MADV_DONTNEED) to inform the OS that pages can be reclaimed
-This behavior is configurable with environment variables
----
 5. Or change to [mimalloc](mimalloc_notes.md)
-- Think about using .c linked library to hide unnecessary functions. 
+- Think about using .c (statically or dynamically?) linked library to hide unnecessary functions. 
 
 <!-- 5. (DEPRECATED) Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
     1. Free list in Red black tree? Or doubly linked list + RB tree
@@ -66,7 +31,7 @@ medium sized has its own fixed-sized pools. (EXTENSION OF 5)
     3. Memory management with thread-local pools? Manage cache-line alignment
     4. Bins for different size allocations, cache to keep track of the memory per bin -->
 6. Adapt to C++ allocators.
-
+6.5 DOCUMENTATION
 
 
 7. Extend arena with logging, visualization, debugging features that can be enabled.

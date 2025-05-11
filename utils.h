@@ -39,7 +39,7 @@ static DWORD prot;
 #define DEBUG_PRINT(fmt, ...) ((void)0)
 #endif
 
-uintptr_t align_address(uintptr_t addr, uintptr_t align) {
+uintptr_t _align_address(uintptr_t addr, uintptr_t align) {
   if (align == 0) {
     return addr;
   }
@@ -65,16 +65,16 @@ static size_t _getPageSize(void) {
   return PAGE_SIZE;
 }
 
-static inline uintptr_t extendPolicy(uintptr_t size) {
+static inline uintptr_t _extendPolicy(uintptr_t size) {
   return size << 2;  // Opt *4
 }
-static inline uintptr_t reducePolicy(uintptr_t size) {
+static inline uintptr_t _reducePolicy(uintptr_t size) {
   return size >> 1;  // Opt /2
 }
-static inline int reduceCondition(uintptr_t used_size, uintptr_t comm_size) {
+static inline int _reduceCondition(uintptr_t used_size, uintptr_t comm_size) {
   return comm_size / used_size >= 4;
 }
-static inline uint8_t* os_new_virtual_mapping_(size_t size) {
+static inline uint8_t* _os_new_virtual_mapping(size_t size) {
   // We want to return ptr on success, NULL on failure
 #ifdef _WIN32
   return ((uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE));
@@ -127,13 +127,17 @@ static inline int _os_protect_readwrite(void* base_ptr, size_t size) {
   return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
-static inline int os_protect_none(void* base_ptr, size_t size) {
+static inline int _os_protect_none(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualProtect(base_ptr, size, PAGE_NOACCESS, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
   // On Unix-like systems, it is more of a suggestion
   return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
+}
+
+static inline uintptr_t _linked_large_block_threshold(uintptr_t block_size) {
+  return block_size / 4;
 }
 // #ifndef DEBUG
 // inline void _os_free(void* base_ptr, size_t size) {
