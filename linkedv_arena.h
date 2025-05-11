@@ -483,18 +483,18 @@ int InitScratch_LinkedVArena(StaticArena* scratch_space, LinkedVArena* arena, ui
 int DestroyScratch_LinkedVArena(StaticArena* scratch_space, LinkedVArena* parent_arena) {
   // Make sure you destroy arenas in reverse order on which you created them for correctness.
   // Check for position overflow in the memory pop.
-  LinkedVArena* traverse = parent_arena;
-  bool          found    = false;
-  while (traverse) {
-    if (parent_arena->memory_ <= scratch_space->memory_ && parent_arena->memory_ + parent_arena->total_size_ > scratch_space->memory_) {
+  LinkedVArena* traversed_arena = parent_arena;
+  bool          found           = false;
+  while (traversed_arena) {
+    if (traversed_arena->memory_ <= scratch_space->memory_ &&
+        traversed_arena->memory_ + traversed_arena->usable_size_ > scratch_space->memory_) {
       found = true;
       break;
     }
-    traverse->next_arena_;
+    traversed_arena = traversed_arena->next_arena_;
   }
   if (found) {
-    if (parent_arena != traverse ||
-        scratch_space->memory_ != parent_arena->memory_ + parent_arena->position_ - scratch_space->total_size_) {
+    if (scratch_space->memory_ != traversed_arena->memory_ + traversed_arena->position_ - scratch_space->total_size_) {
       DEBUG_PRINT("Cannot delete the used memory of the scratch because it is not on the top of the arena.");
       return ERROR_INVALID_PARAMS;
     }
@@ -509,7 +509,7 @@ int DestroyScratch_LinkedVArena(StaticArena* scratch_space, LinkedVArena* parent
   //   parent_arena->position_ = scratch_space->total_size_;
   // }
   // Null properties and pop memory
-  parent_arena->position_ -= scratch_space->total_size_;
+  traversed_arena->position_ -= scratch_space->total_size_;
   scratch_space->memory_     = NULL;
   scratch_space->total_size_ = 0;
   scratch_space->position_   = 0;
@@ -521,18 +521,19 @@ int MergeScratch_LinkedVArena(StaticArena* scratch_space, LinkedVArena* parent_a
   // Merger must run under locked mutex of parent to make sure of correct behaviour.
   // Set the new position to conserve the memory from the scratch space and null properties
   // No need to do bounds check as the memory addresses must be properly ordered, and the position too.
-  LinkedVArena* traverse = parent_arena;
-  bool          found    = false;
-  while (traverse) {
-    if (parent_arena->memory_ <= scratch_space->memory_ && parent_arena->memory_ + parent_arena->total_size_ > scratch_space->memory_) {
+  LinkedVArena* traversed_arena = parent_arena;
+  bool          found           = false;
+  while (traversed_arena) {
+    if (traversed_arena->memory_ <= scratch_space->memory_ &&
+        traversed_arena->memory_ + traversed_arena->usable_size_ > scratch_space->memory_) {
       found = true;
       break;
     }
-    traverse->next_arena_;
+    traversed_arena = traversed_arena->next_arena_;
   }
   if (found) {
-    if (parent_arena != traverse ||
-        scratch_space->memory_ != parent_arena->memory_ + parent_arena->position_ - scratch_space->total_size_) {
+    if (parent_arena != traversed_arena ||
+        scratch_space->memory_ != traversed_arena->memory_ + traversed_arena->position_ - scratch_space->total_size_) {
       DEBUG_PRINT("Cannot merge the used memory of the scratch because it is not on the top of the arena.");
       return ERROR_INVALID_PARAMS;
     }
@@ -540,7 +541,7 @@ int MergeScratch_LinkedVArena(StaticArena* scratch_space, LinkedVArena* parent_a
     DEBUG_PRINT("Cannot merge a scratch space that is allocated in an isolated block.");
     return ERROR_INVALID_PARAMS;
   }
-  parent_arena->position_    = ((uintptr_t)scratch_space->memory_ - (uintptr_t)parent_arena->memory_) + scratch_space->position_;
+  traversed_arena->position_ = ((uintptr_t)scratch_space->memory_ - (uintptr_t)traversed_arena->memory_) + scratch_space->position_;
   scratch_space->memory_     = NULL;
   scratch_space->total_size_ = 0;
   scratch_space->position_   = 0;
