@@ -4,17 +4,27 @@
 #include <stdint.h>
 #include <stdlib.h>
 #ifdef _WIN32
-#ifdef __GNUC__
-
+#if __has_include(<windows.h>)
 #include <windows.h>
-// Compilation using msys2 env or similar
 #else
-#error "You need to compile with gcc."
+#error "You need to have windows.h, use a msys2 installation"
 #endif
 #else
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
+#ifdef __GNUC__
+// Compilation using msys2 env or similar
+#define __builtin_popcount __builtin_popcount
+#elif __clang__
+#define __builtin_popcount __builtin_popcount
+#elif _MSC_VER
+#include <intrin.h>
+#define __builtin_popcount __popcnt
+#else
+#error "Unrecognized compiler."
+#endif
+
 #include "cache.h"
 // typedef unsigned long long size_t;
 
@@ -41,15 +51,19 @@ static DWORD prot;
 #define DEBUG_PRINT(fmt, ...) ((void)0)
 #endif
 
-uintptr_t align_address(uintptr_t addr, uintptr_t align) {
+uintptr_t _align_address(uintptr_t addr, uintptr_t align) {
   if (align == 0) {
     return addr;
   }
   return addr + (align - (addr % align)) % align;
 }
 
-static uintptr_t align_2pow(uintptr_t n, uintptr_t align) {
+static inline uintptr_t _align_2pow_ceil(uintptr_t n, uintptr_t align) {
   return (n + align - 1) & ~(align - 1);
+}
+
+static inline uintptr_t _align_2pow_floor(uintptr_t n, uintptr_t align) {
+  return n & (~(align - 1));
 }
 
 static size_t PAGE_SIZE = 0;
@@ -67,16 +81,16 @@ static size_t _getPageSize(void) {
   return PAGE_SIZE;
 }
 
-static uintptr_t extendPolicy(uintptr_t size) {
-  return size * 4;
+static inline uintptr_t _extendPolicy(uintptr_t size) {
+  return size << 2;  // Opt *4
 }
-static uintptr_t reducePolicy(uintptr_t size) {
-  return size / 2;
+static inline uintptr_t _reducePolicy(uintptr_t size) {
+  return size >> 1;  // Opt /2
 }
-static int reduceCondition(uintptr_t used_size, uintptr_t comm_size) {
+static inline int _reduceCondition(uintptr_t used_size, uintptr_t comm_size) {
   return comm_size / used_size >= 4;
 }
-static uint8_t* os_new_virtual_mapping_(size_t size) {
+static inline uint8_t* _os_new_virtual_mapping(size_t size) {
   // We want to return ptr on success, NULL on failure
 #ifdef _WIN32
   return ((uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE));
@@ -86,7 +100,7 @@ static uint8_t* os_new_virtual_mapping_(size_t size) {
 #endif
 }
 
-static uint8_t* os_new_virtual_mapping_commit(size_t size) {
+static inline uint8_t* _os_new_virtual_mapping_commit(size_t size) {
   // We want to return ptr on success, NULL on failure
 #ifdef _WIN32
   return ((uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
@@ -96,7 +110,7 @@ static uint8_t* os_new_virtual_mapping_commit(size_t size) {
 #endif
 }
 
-static int os_commit_(void* base_ptr, size_t size) {
+static inline int _os_commit(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualAlloc(base_ptr, size, MEM_COMMIT, PAGE_READWRITE) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -104,7 +118,7 @@ static int os_commit_(void* base_ptr, size_t size) {
   return (madvise(base_ptr, size, MADV_WILLNEED) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
-static int os_uncommit_(void* base_ptr, size_t size) {
+static inline int _os_uncommit(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualFree(base_ptr, size, MEM_DECOMMIT) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -113,7 +127,7 @@ static int os_uncommit_(void* base_ptr, size_t size) {
 #endif
 }
 
-static int os_protect_readonly(void* base_ptr, size_t size) {
+static inline int _os_protect_readonly(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualProtect(base_ptr, size, PAGE_READONLY, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -121,7 +135,7 @@ static int os_protect_readonly(void* base_ptr, size_t size) {
   return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
-static int os_protect_readwrite(void* base_ptr, size_t size) {
+static inline int _os_protect_readwrite(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualProtect(base_ptr, size, PAGE_READWRITE, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
@@ -129,13 +143,19 @@ static int os_protect_readwrite(void* base_ptr, size_t size) {
   return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
 }
-static int os_protect_none(void* base_ptr, size_t size) {
+static inline int _os_protect_none(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualProtect(base_ptr, size, PAGE_NOACCESS, &prot) != FALSE) ? SUCCESS : ERROR_OS_MEMORY;
 #else
   // On Unix-like systems, it is more of a suggestion
   return (mprotect(base_ptr, size, PROT_READ) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #endif
+}
+
+static inline uintptr_t _linked_large_block_threshold(uintptr_t block_size) {
+  // The idea is to minimize the unused memory per block in linked arenas. If the alloc size is very big it is likely the arena has to skip
+  // the rest of the block.
+  return block_size / 10;
 }
 // #ifndef DEBUG
 //  void _os_free(void* base_ptr, size_t size) {
@@ -146,7 +166,7 @@ static int os_protect_none(void* base_ptr, size_t size) {
 // #endif
 // }
 // #else
-static int os_free_(void* base_ptr, size_t size) {
+static inline int _os_free(void* base_ptr, size_t size) {
 #ifdef _WIN32
   return (VirtualFree(base_ptr, 0, MEM_RELEASE) == 0) ? SUCCESS : ERROR_OS_MEMORY;
 #else
