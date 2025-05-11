@@ -292,7 +292,12 @@ int PopTo_VirtualArena(VirtualArena* arena, uintptr_t position) {
   }
 #endif
   if (position < arena->position_) {
+    // Works because it is zero based!
     arena->position_ = position;
+#ifdef DEBUG
+  } else {
+    return ERROR_INVALID_PARAMS;
+#endif
   }
   while (arena->position_ > _getPageSize() && _reduceCondition(arena->committed_size_, arena->position_)) {
     if (ReduceCommit_VirtualArena(arena, _reducePolicy(arena->committed_size_)) == ERROR_OS_MEMORY) {

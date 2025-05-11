@@ -297,12 +297,11 @@ int PopTo_LinkedSArena(LinkedSArena* arena, uintptr_t position) {
   }
 #endif
   if (position < arena->position_) {
+    // Works because it is zero based!
     arena->position_ = position;
-  }
-  while (arena->position_ > _getPageSize() && _reduceCondition(arena->position_, arena->add_committed_size_)) {
-    if (ReduceCommit_LinkedSArena(arena, _reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
-      DEBUG_PRINT("Reduce commit in Virtual arena failed");
-    }
+  } else {
+    DEBUG_PRINT("Cannot pop to a greater position, parameter has to be smaller than current position.");
+    return ERROR_INVALID_PARAMS;
   }
   return SUCCESS;
 }
@@ -317,11 +316,7 @@ int PopToAdress_LinkedSArena(LinkedSArena* arena, uint8_t* address) {
     arena->position_ = final_position;
   } else {
     DEBUG_PRINT("Address argument is outside the memory in use : PopToAddress");
-  }
-  while (arena->position_ > _getPageSize() && _reduceCondition(arena->position_, arena->add_committed_size_)) {
-    if (ReduceCommit_LinkedSArena(arena, _reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
-      DEBUG_PRINT("Reduce commit in Virtual arena failed");
-    }
+    return ERROR_INVALID_PARAMS;
   }
   return SUCCESS;
 }
@@ -340,7 +335,7 @@ int PopBlock_LinkedSArena(LinkedSArena* arena) {
   temp.next_arena_ = NULL;
   // Destroy the isolated block
   if (Destroy_LinkedSArena(&temp) == ERROR_INVALID_PARAMS) {
-    DEBUG_PRINT("Bad parameters in destructor");
+    DEBUG_PRINT("Bad parameters in destructor.");
   }
   return SUCCESS;
 }
@@ -357,9 +352,6 @@ int ClearCurrentBlock_LinkedSArena(LinkedSArena* arena) {
   }
 #endif
   arena->position_ = 0;
-  if (ReduceCommit_LinkedSArena(arena, _getPageSize()) == ERROR_OS_MEMORY) {
-    DEBUG_PRINT("Reduce commit in Virtual arena failed");
-  }
   return SUCCESS;
 }
 
@@ -371,16 +363,13 @@ int ClearAll_LinkedSArena(LinkedSArena* arena) {
 #endif
   arena->position_ = 0;
   if (arena->next_arena_ != NULL && Destroy_LinkedSArena(arena->next_arena_) == ERROR_INVALID_PARAMS) {
-    DEBUG_PRINT("Bad params in destructor");
+    DEBUG_PRINT("Bad params in destructor.");
   }
   arena->next_arena_ = NULL;
   if (arena->blocks_ != NULL) {
     if (_DestroyAll_LargeMemBlocks(arena->blocks_) == ERROR_INVALID_PARAMS) {
-      DEBUG_PRINT("Bad params in destructor");
+      DEBUG_PRINT("Bad params in destructor.");
     }
-  }
-  if (ReduceCommit_LinkedSArena(arena, _getPageSize()) == ERROR_OS_MEMORY) {
-    DEBUG_PRINT("Reduce commit in Virtual arena failed");
   }
   return SUCCESS;
 }

@@ -361,7 +361,11 @@ int PopTo_LinkedVArena(LinkedVArena* arena, uintptr_t position) {
   }
 #endif
   if (position < arena->position_) {
+    // Works because it is zero based!
     arena->position_ = position;
+  } else {
+    DEBUG_PRINT("Cannot pop to a greater position, parameter has to be smaller than current position.");
+    return ERROR_INVALID_PARAMS;
   }
   while (arena->position_ > _getPageSize() && _reduceCondition(arena->position_, arena->add_committed_size_)) {
     if (ReduceCommit_LinkedVArena(arena, _reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
@@ -381,6 +385,7 @@ int PopToAdress_LinkedVArena(LinkedVArena* arena, uint8_t* address) {
     arena->position_ = final_position;
   } else {
     DEBUG_PRINT("Address argument is outside the memory in use : PopToAddress");
+    return ERROR_INVALID_PARAMS;
   }
   while (arena->position_ > _getPageSize() && _reduceCondition(arena->position_, arena->add_committed_size_)) {
     if (ReduceCommit_LinkedVArena(arena, _reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {

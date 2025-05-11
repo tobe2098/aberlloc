@@ -202,7 +202,12 @@ int PopTo_StaticArena(StaticArena* arena, uintptr_t position) {
   }
 #endif
   if (position < arena->position_) {
+    // Works because it is zero based!
     arena->position_ = position;
+#ifdef DEBUG
+  } else {
+    return ERROR_INVALID_PARAMS;
+#endif
   }
   return SUCCESS;
 }
