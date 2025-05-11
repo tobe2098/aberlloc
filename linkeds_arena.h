@@ -23,8 +23,7 @@ typedef struct LinkedSArena {
     uint8_t* memory_;    // Base pointer to reserved memory
     uint8_t* base_ptr_;  // Current allocation position
 
-    uintptr_t position_;  // Current allocation position
-    uintptr_t add_committed_size_;
+    uintptr_t position_;    // Current allocation position
     uintptr_t total_size_;  // Size
     uintptr_t base_block_size_;
     uintptr_t usable_size_;
@@ -66,14 +65,9 @@ int Init_LinkedSArena(LinkedSArena* arena, uintptr_t arena_size, bool auto_align
     arena->auto_align_ = false;
     arena->alignment_  = word_size;
   }
-  arena->add_committed_size_ = _getPageSize();
-  arena->memory_             = os_new_virtual_mapping_(arena->total_size_);
-  arena->next_arena_         = NULL;
+  arena->memory_     = _os_new_virtual_mapping_commit(arena->total_size_);
+  arena->next_arena_ = NULL;
   if (arena->memory_ == NULL) {
-    return ERROR_OS_MEMORY;
-  }
-  if (_os_commit(arena->memory_, arena->total_size_ - arena->base_block_size_ + arena->add_committed_size_) == ERROR_OS_MEMORY) {
-    _os_free(arena->memory_, arena->total_size_);
     return ERROR_OS_MEMORY;
   }
   return SUCCESS;
@@ -97,16 +91,15 @@ int Destroy_LinkedSArena(LinkedSArena* arena) {
     DEBUG_PRINT("Freeing old virtual memory did not work during remap. Memory leaked.");
   }
 
-  arena->memory_             = NULL;
-  arena->base_ptr_           = NULL;
-  arena->usable_size_        = 0;
-  arena->total_size_         = 0;
-  arena->add_committed_size_ = 0;
-  arena->position_           = 0;
-  arena->auto_align_         = 0;
-  arena->alignment_          = 0;
-  arena->next_arena_         = NULL;
-  arena->blocks_             = NULL;
+  arena->memory_      = NULL;
+  arena->base_ptr_    = NULL;
+  arena->usable_size_ = 0;
+  arena->total_size_  = 0;
+  arena->position_    = 0;
+  arena->auto_align_  = 0;
+  arena->alignment_   = 0;
+  arena->next_arena_  = NULL;
+  arena->blocks_      = NULL;
   return SUCCESS;
 }
 
@@ -180,55 +173,6 @@ int NewBlock_LinkedSArena(LinkedSArena* arena) {
   return SUCCESS;
 }
 
-int ExtendCommit_LinkedSArena(LinkedSArena* arena, uintptr_t total_commited_size) {
-#ifdef DEBUG
-  if (!arena || !total_commited_size) {
-    return ERROR_INVALID_PARAMS;
-  }
-  if (total_commited_size < arena->committed_size_) {
-    DEBUG_PRINT("Possible overflow");
-    return ERROR_INVALID_PARAMS;
-  }
-  if (total_commited_size > arena->base_block_ && arena->base_block_ == arena->committed_size_) {
-    DEBUG_PRINT("ExtendCommit should not have been called under these conditions.")
-    return ERROR_INVALID_PARAMS;
-  }
-#endif
-  // if (total_commited_size > arena->base_block_ && arena->base_block_ == arena->committed_size_) {
-  //   // Nothing, we shouldnt call this function in the first place in these conditions
-  // } else
-  if (total_commited_size > arena->base_block_size_) {
-    total_commited_size = arena->base_block_size_;
-  }
-
-  if (total_commited_size == arena->add_committed_size_) {
-    DEBUG_PRINT("Not enough virtual memory in the block, creating a new one.");
-    if (NewBlock_LinkedSArena(arena) != SUCCESS) {
-      DEBUG_PRINT("Block creation failed");
-      return ERROR_OS_MEMORY;
-    }
-  } else {
-    if (_os_commit(arena->memory_, arena->total_size_ - arena->base_block_size_ + total_commited_size) == ERROR_OS_MEMORY) {
-      return ERROR_OS_MEMORY;
-    }
-    arena->add_committed_size_ = total_commited_size;
-  }
-  // We only need to extend the memory commitment under the total size.
-
-  return SUCCESS;
-}
-int ReduceCommit_LinkedSArena(LinkedSArena* arena, uintptr_t total_commited_size) {
-#ifdef DEBUG
-  if (!arena || !total_commited_size || total_commited_size > arena->__commited_size) {
-    return ERROR_INVALID_PARAMS;
-  }
-#endif
-  if (_os_uncommit(arena->memory_ + (arena->total_size_ - arena->base_block_size_) + total_commited_size,
-                   arena->add_committed_size_ - total_commited_size) == ERROR_OS_MEMORY) {
-    return ERROR_OS_MEMORY;
-  }
-  arena->add_committed_size_ = total_commited_size;
-}
 uintptr_t GetPos_LinkedSArena(LinkedSArena* arena) {
 #ifdef DEBUG
   if (arena == NULL) {
@@ -281,10 +225,10 @@ uint8_t* PushNoZero_LinkedSArena(LinkedSArena* arena, uintptr_t bytes) {
   if (arena->auto_align_) {
     PushAligner_LinkedSArena(arena, arena->alignment_);
   }
-  if (bytes <= arena->base_block_size_ / 2) {
+  if (bytes <= _linked_large_block_threshold(arena->base_block_size_)) {
     // To avoid wasted memory, we estimate
-    while (arena->position_ + bytes > arena->add_committed_size_ + (arena->usable_size_ - arena->base_block_size_)) {
-      if (ExtendCommit_LinkedSArena(arena, extendPolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
+    if (bytes + arena->position_ > arena->total_size_) {
+      if (NewBlock_LinkedSArena(arena) != SUCCESS) {
         return NULL;
       }
     }
@@ -305,19 +249,17 @@ uint8_t* Push_LinkedSArena(LinkedSArena* arena, uintptr_t bytes) {
   if (arena->auto_align_) {
     PushAligner_LinkedSArena(arena, arena->alignment_);
   }
-
-  if (bytes <= arena->base_block_size_ / 2) {
-    // To avoid wasted memory, we estimate
-    while (arena->position_ + bytes > arena->add_committed_size_ + (arena->usable_size_ - arena->base_block_size_)) {
-      if (ExtendCommit_LinkedSArena(arena, extendPolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
+  if (bytes <= _linked_large_block_threshold(arena->usable_size_)) {
+    if (bytes + arena->position_ > arena->usable_size_) {
+      if (NewBlock_LinkedSArena(arena) != SUCCESS) {
         return NULL;
       }
     }
   } else {
     DEBUG_PRINT("Allocating in a large memory block.");
-    uint8_t* mem = PushLargeBlock_LinkedSArena(arena, bytes);
-    memset(mem, 0, bytes);
-    return mem;
+    uint8_t* mem_ptr = PushLargeBlock_LinkedSArena(arena, bytes);
+    memset(mem_ptr, 0, bytes);
+    return mem_ptr;
   }
   uint8_t* mem = arena->base_ptr_ + arena->position_;
   arena->position_ += bytes;
@@ -333,15 +275,19 @@ int Pop_LinkedSArena(LinkedSArena* arena, uintptr_t bytes) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  if (arena->position_ < bytes) {
-    bytes = arena->position_;
-  }
-  arena->position_ -= bytes;
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->position_, arena->add_committed_size_)) {
-    if (ReduceCommit_LinkedSArena(arena, reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
-      DEBUG_PRINT("Reduce commit in Virtual arena failed");
+  if (arena->position_ < bytes && arena->next_arena_) {
+    uintptr_t remainder = bytes - arena->position_;
+    while (remainder > 0) {
+      PopBlock_LinkedSArena(arena);
+      if (arena->position_ < remainder) {
+        remainder -= arena->position_;
+      } else {
+        bytes = remainder;
+        break;
+      }
     }
   }
+  arena->position_ -= bytes;
   return SUCCESS;
 }
 int PopTo_LinkedSArena(LinkedSArena* arena, uintptr_t position) {
@@ -353,8 +299,8 @@ int PopTo_LinkedSArena(LinkedSArena* arena, uintptr_t position) {
   if (position < arena->position_) {
     arena->position_ = position;
   }
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->position_, arena->add_committed_size_)) {
-    if (ReduceCommit_LinkedSArena(arena, reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ > _getPageSize() && _reduceCondition(arena->position_, arena->add_committed_size_)) {
+    if (ReduceCommit_LinkedSArena(arena, _reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
@@ -372,8 +318,8 @@ int PopToAdress_LinkedSArena(LinkedSArena* arena, uint8_t* address) {
   } else {
     DEBUG_PRINT("Address argument is outside the memory in use : PopToAddress");
   }
-  while (arena->position_ > _getPageSize() && reduceCondition(arena->position_, arena->add_committed_size_)) {
-    if (ReduceCommit_LinkedSArena(arena, reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
+  while (arena->position_ > _getPageSize() && _reduceCondition(arena->position_, arena->add_committed_size_)) {
+    if (ReduceCommit_LinkedSArena(arena, _reducePolicy(arena->add_committed_size_)) == ERROR_OS_MEMORY) {
       DEBUG_PRINT("Reduce commit in Virtual arena failed");
     }
   }
