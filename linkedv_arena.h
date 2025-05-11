@@ -29,8 +29,8 @@ typedef struct LinkedVArena {
     uintptr_t base_block_size_;  // Base requested memory size
     uintptr_t usable_size_;      // Available memory for allocations (total)
     // pthread_mutex_t __arena_mutex;
-    LinkedVArena*   next_arena_;
-    _LargeMemBlock* blocks_;
+    LinkedVArena*     next_arena_;
+    SuperSafeScratch* blocks_;
 
     uintptr_t alignment_;
     bool      auto_align_;
@@ -44,8 +44,8 @@ int Init_LinkedVArena(LinkedVArena* arena, uintptr_t arena_size, bool auto_align
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->base_block_size_ = _align_2pow(arena_size, _getPageSize());
-  arena->total_size_      = arena->base_block_size_ + _align_2pow(sizeof(LinkedVArena), _getPageSize());
+  arena->base_block_size_ = _align_2pow_ceil(arena_size, _getPageSize());
+  arena->total_size_      = arena->base_block_size_ + _align_2pow_ceil(sizeof(LinkedVArena), _getPageSize());
   arena->position_        = 0;
 
   // arena->__parent     = NULL;
@@ -138,7 +138,7 @@ int Set_NewBlock_PageAlign(LinkedVArena* arena, bool boolean_val) {
 
 uint8_t* PushLargeBlock_LinkedVArena(LinkedVArena* arena, uintptr_t bytes) {
   DEBUG_PRINT("Large block allocation of %d.", bytes);
-  _LargeMemBlock* new_block = _Create_LargeMemBlock(bytes, arena->blocks_);
+  SuperSafeScratch* new_block = _Create_LargeMemBlock(bytes, arena->blocks_);
   if (new_block == NULL) {
     DEBUG_PRINT("Failed large block memory allocation.");
     return NULL;
@@ -247,7 +247,7 @@ int PushAligner_LinkedVArena(LinkedVArena* arena, uintptr_t alignment) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_ + (uintptr_t)arena->base_ptr_, alignment) - (uintptr_t)arena->base_ptr_;
+  arena->position_ = _align_2pow_ceil(arena->position_ + (uintptr_t)arena->base_ptr_, alignment) - (uintptr_t)arena->base_ptr_;
   // arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   return SUCCESS;
 }
@@ -258,7 +258,7 @@ int PushAlignerCacheLine_LinkedVArena(LinkedVArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_ + (uintptr_t)arena->base_ptr_, CACHE_LINE_SIZE) - (uintptr_t)arena->base_ptr_;
+  arena->position_ = _align_2pow_ceil(arena->position_ + (uintptr_t)arena->base_ptr_, CACHE_LINE_SIZE) - (uintptr_t)arena->base_ptr_;
   return SUCCESS;
 }
 
@@ -268,7 +268,7 @@ int PushAlignerPageSize_LinkedVArena(LinkedVArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_ + (uintptr_t)arena->base_ptr_, _getPageSize()) - (uintptr_t)arena->base_ptr_;
+  arena->position_ = _align_2pow_ceil(arena->position_ + (uintptr_t)arena->base_ptr_, _getPageSize()) - (uintptr_t)arena->base_ptr_;
   return SUCCESS;
 }
 

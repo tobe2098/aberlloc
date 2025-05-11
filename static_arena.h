@@ -108,7 +108,7 @@ int PushAligner_StaticArena(StaticArena* arena, uintptr_t alignment) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_, alignment);
+  arena->position_ = _align_2pow_ceil(arena->position_, alignment);
   return SUCCESS;
 }
 
@@ -118,7 +118,7 @@ int PushAlignerCacheLine_StaticArena(StaticArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_, CACHE_LINE_SIZE);
+  arena->position_ = _align_2pow_ceil(arena->position_, CACHE_LINE_SIZE);
   return SUCCESS;
 }
 int PushAlignerPageSize_StaticArena(StaticArena* arena) {
@@ -127,7 +127,7 @@ int PushAlignerPageSize_StaticArena(StaticArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_, _getPageSize());
+  arena->position_ = _align_2pow_ceil(arena->position_, _getPageSize());
   return SUCCESS;
 }
 uint8_t* PushLargeBlock_StaticArena(StaticArena* arena, uintptr_t bytes) {

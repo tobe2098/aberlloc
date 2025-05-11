@@ -56,8 +56,12 @@ uintptr_t _align_address(uintptr_t addr, uintptr_t align) {
   return addr + (align - (addr % align)) % align;
 }
 
-static inline uintptr_t _align_2pow(uintptr_t n, uintptr_t align) {
+static inline uintptr_t _align_2pow_ceil(uintptr_t n, uintptr_t align) {
   return (n + align - 1) & ~(align - 1);
+}
+
+static inline uintptr_t _align_2pow_floor(uintptr_t n, uintptr_t align) {
+  return n & (~(align - 1));
 }
 
 static size_t PAGE_SIZE = 0;

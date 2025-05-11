@@ -189,7 +189,7 @@ int PushAligner_VirtualArena(VirtualArena* arena, uintptr_t alignment) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_, alignment);
+  arena->position_ = _align_2pow_ceil(arena->position_, alignment);
   // arena->position_ = align_2pow(arena->position_ + (uintptr_t)arena->__memory, alignment) - (uintptr_t)arena->__memory;
   return SUCCESS;
 }
@@ -200,7 +200,7 @@ int PushAlignerCacheLine_VirtualArena(VirtualArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_, CACHE_LINE_SIZE);
+  arena->position_ = _align_2pow_ceil(arena->position_, CACHE_LINE_SIZE);
   return SUCCESS;
 }
 int PushAlignerPageSize_VirtualArena(VirtualArena* arena) {
@@ -209,7 +209,7 @@ int PushAlignerPageSize_VirtualArena(VirtualArena* arena) {
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  arena->position_ = _align_2pow(arena->position_, _getPageSize());
+  arena->position_ = _align_2pow_ceil(arena->position_, _getPageSize());
   return SUCCESS;
 }
 uint8_t* PushNoZero_VirtualArena(VirtualArena* arena, uintptr_t bytes) {

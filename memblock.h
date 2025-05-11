@@ -5,17 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "./utils.h"
-#ifdef _WIN32
-#ifdef __GNUC__
-#include <windows.h>
-// Compilation using msys2 env or similar
-#else
-#error "You need to compile with gcc."
-#endif
-#else
-#include <sys/mman.h>
-#include <unistd.h>
-#endif
+
 typedef struct _LargeMemBlock {
     uint8_t*               memory_;
     uintptr_t              block_size_;
@@ -30,7 +20,7 @@ _LargeMemBlock* _Create_LargeMemBlock(uintptr_t block_size, _LargeMemBlock* next
     return ERROR_INVALID_PARAMS;
   }
 #endif
-  uintptr_t total_size = _align_2pow(_align_2pow(block_size, _getPageSize()) + sizeof(_LargeMemBlock), _getPageSize());
+  uintptr_t total_size = _align_2pow_ceil(_align_2pow_ceil(block_size, _getPageSize()) + sizeof(_LargeMemBlock), _getPageSize());
   uint8_t*  mem        = _os_new_virtual_mapping_commit(total_size);
   if (mem == NULL) {
     return NULL;
@@ -40,7 +30,9 @@ _LargeMemBlock* _Create_LargeMemBlock(uintptr_t block_size, _LargeMemBlock* next
   block->header_size_   = total_size - block_size;
   block->memory_        = mem + block->header_size_;
   block->next_block_    = next_block;
+#ifdef _LBHSAFE
   _os_protect_readonly(mem, block->header_size_);
+#endif
   return block;
 }
 
@@ -53,7 +45,9 @@ int _Destroy_LargeMemBlock(_LargeMemBlock* block) {
   uint8_t*  mem         = (uint8_t*)block;
   uintptr_t block_size  = block->block_size_;
   uintptr_t header_size = block->header_size_;
+#ifdef _LBHSAFE
   _os_protect_readwrite(block, header_size);
+#endif
   block->memory_      = NULL;
   block->block_size_  = 0;
   block->header_size_ = 0;
@@ -114,9 +108,13 @@ int _DeleteSingle_LargeMemBlock(_LargeMemBlock* root, uint8_t* target) {
     curr = curr->next_block_;
   }
   if (curr) {  // Could assume hit, not for now
+#ifdef _LBHSAFE
     _os_protect_readwrite(prev, header);
+#endif
     prev->next_block_ = curr->next_block_;
+#ifdef _LBHSAFE
     _os_protect_readonly(prev, header);
+#endif
     _Destroy_LargeMemBlock(curr);
     return SUCCESS;
   } else {
@@ -124,24 +122,28 @@ int _DeleteSingle_LargeMemBlock(_LargeMemBlock* root, uint8_t* target) {
   }
 }
 
-_LargeMemBlock* _Merge_LargeMemBlocks(_LargeMemBlock* first, _LargeMemBlock* second) {
-  if (NULL == second) {
+_LargeMemBlock* _Merge_LargeMemBlocks(_LargeMemBlock* first_block, _LargeMemBlock* second_block) {
+  if (NULL == second_block) {
     // If both are NULL, return is NULL
-    return first;
+    return first_block;
   }
-  if (NULL == first) {
-    return second;
+  if (NULL == first_block) {
+    return second_block;
   }
   // Do not use the second pointer afterwards!
-  _LargeMemBlock* traversed = first;
-  while (traversed->next_block_ != NULL) {
-    traversed = traversed->next_block_;
+  _LargeMemBlock* traversed_block = first_block;
+  while (traversed_block->next_block_ != NULL) {
+    traversed_block = traversed_block->next_block_;
   }
 
+#ifdef _LBHSAFE
   _os_protect_readwrite(traversed, traversed->header_size_);
-  traversed->next_block_ = second;
+#endif
+  traversed_block->next_block_ = second_block;
+#ifdef _LBHSAFE
   _os_protect_readonly(traversed, traversed->header_size_);
-  return first;
+#endif
+  return first_block;
 }
 
 #endif
