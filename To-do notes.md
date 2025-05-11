@@ -1,18 +1,21 @@
 # To do
 (Mainly posix, remember all arenas should use a mutex to avoid threading problems).
 1. Fixed size buffer with functions like the video (simple arena malloc) DONE
-2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost) IN PROGRESS
+2. Dynamic growth with chaining (chained arena malloc, need special free arena, need linked list and pointer to last. No real cost) DONE
+ - Memblock single linked list delte (done) for destroy memblock in static(done) and virtual(done). In linkedv_arena same but single linked list to see if it is there (error if not on the top) or large page (done).
+ - Pass scratch fixes (done)
+ - Fix large block address pass (done)
+ - Make pagealign of starting arena not optional, protect first page for readonly linkedv (remove all the base_ptr stuff) (bad for performance, discarded)
+ - Add large memblocks to Linkedv (only if size exceeds total size) and all funcs DONE
 2.5 Add error flags for the -1 returns DONE
 3. Virtual memory mapping extension (virtual mmap malloc) DONE
-3.1 Scratch spaces mmaps (QuickScratch->StaticArena? Cannot merge)
-- Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc) (VirtualLinkedArena)
-4. Create a vector class that uses 3 & combo (vlarray) WITH ADDITIONAL PAGE TO HAVE HEADER, NOT PAGEALIGNED
-4.5. within arena scratch that leaves space for ret val, (Only in high capacity (either real or virtual))
-!!-!!Scratch spaces as reset states of arenas with an offset parameter for the return type alloc. (option only for arenas that are not in limited size blocks/pages, as the scratch space has to be big.).
-4.6 Before jemalloc, make the arenas self-allocate and deallocate by putting them at the front of the arena, no memory_page alignment. Could also remove the alignment need in the large memory block, or make it optional (only opt out if called pushblock).
+3.1 Scratch spaces mmaps (QuickScratch->StaticArena? Cannot merge) and not really quick
+- Combo: 2 and 3 (virtual mmap extends up to a size param, then new block of pages to avoid OOM allocation failure). (chained virtual mmap alloc) (VirtualLinkedArena) DONE
 4.7 SuperSafeScratch (guarded by blocked pages, memset before and after(with volatile, avoid optimizing away)).
-5. Essentially jemalloc (arenas for small allocations, used with at least n mem, binary search of arena? and freelist for each. radix tree for large memblock headers, decay?)-> malloc and free
-5.5 Thread=local allocations management.
+
+5. Or change to [mimalloc](mimalloc_notes.md)
+- Think about using .c (statically or dynamically?) linked library to hide unnecessary functions. 
+
 <!-- 5. (DEPRECATED) Sub-lifetimes (? Re-watch the video), growing pool allocator using a free-list. Maybe a free-list per byte-length type up to memory page size?
     1. Free list in Red black tree? Or doubly linked list + RB tree
         - Make sure allocations do not spill over to other pages. -->
@@ -24,7 +27,7 @@ medium sized has its own fixed-sized pools. (EXTENSION OF 5)
     3. Memory management with thread-local pools? Manage cache-line alignment
     4. Bins for different size allocations, cache to keep track of the memory per bin -->
 6. Adapt to C++ allocators.
-
+6.5 DOCUMENTATION
 
 
 7. Extend arena with logging, visualization, debugging features that can be enabled.
