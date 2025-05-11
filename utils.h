@@ -2,17 +2,27 @@
 #define _UTILS_ABERLLOC_HEADER
 #include <stdbool.h>
 #ifdef _WIN32
-#ifdef __GNUC__
-
+#if __has_include(<windows.h>)
 #include <windows.h>
-// Compilation using msys2 env or similar
 #else
-#error "You need to compile with gcc."
+#error "You need to have windows.h, use a msys2 installation"
 #endif
 #else
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
+#ifdef __GNUC__
+// Compilation using msys2 env or similar
+#define __builtin_popcount __builtin_popcount
+#elif __clang__
+#define __builtin_popcount __builtin_popcount
+#elif _MSC_VER
+#include <intrin.h>
+#define __builtin_popcount __popcnt
+#else
+#error "Unrecognized compiler."
+#endif
+
 #include "cache.h"
 // typedef unsigned long long size_t;
 
@@ -137,7 +147,9 @@ static inline int _os_protect_none(void* base_ptr, size_t size) {
 }
 
 static inline uintptr_t _linked_large_block_threshold(uintptr_t block_size) {
-  return block_size / 4;
+  // The idea is to minimize the unused memory per block in linked arenas. If the alloc size is very big it is likely the arena has to skip
+  // the rest of the block.
+  return block_size / 10;
 }
 // #ifndef DEBUG
 // inline void _os_free(void* base_ptr, size_t size) {
